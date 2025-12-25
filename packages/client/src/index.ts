@@ -5,6 +5,7 @@ export * from './proxy.js';
 export * from './links.js';
 export * from './observable.js';
 export { wsLink } from './links/ws.js';
+export { dedupeLink } from './links/dedupe.js';
 export * from './types.js';
 
 /**

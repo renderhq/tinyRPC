@@ -1,11 +1,36 @@
-import { createTRPCProxyClient, httpBatchLink, wsLink } from '@tinyrpc/client';
+import { createTRPCProxyClient, httpBatchLink, wsLink, dedupeLink } from '@tinyrpc/client';
 import type { AppRouter } from './server.js';
 
 async function main() {
-    console.log('--- starting tinyrpc production-ready demo ---');
+    console.log('\x1b[36m--- starting tinyRPC production-ready demo ---\x1b[0m');
+
+    const transformer = {
+        serialize: (obj: any): any => {
+            if (obj instanceof Date) return { __type: 'Date', value: obj.toISOString() };
+            if (Array.isArray(obj)) return obj.map(v => transformer.serialize(v));
+            if (typeof obj === 'object' && obj !== null) {
+                const res: any = {};
+                for (const key in obj) res[key] = transformer.serialize(obj[key]);
+                return res;
+            }
+            return obj;
+        },
+        deserialize: (obj: any): any => {
+            if (obj && typeof obj === 'object' && obj.__type === 'Date') return new Date(obj.value);
+            if (Array.isArray(obj)) return obj.map(v => transformer.deserialize(v));
+            if (typeof obj === 'object' && obj !== null) {
+                const res: any = {};
+                for (const key in obj) res[key] = transformer.deserialize(obj[key]);
+                return res;
+            }
+            return obj;
+        }
+    };
 
     const alice = createTRPCProxyClient<AppRouter>({
+        transformer,
         links: [
+            dedupeLink(),
             wsLink({
                 url: 'ws://localhost:3000',
                 headers: () => ({ Authorization: 'token_alice' }),
@@ -14,6 +39,7 @@ async function main() {
     });
 
     const bob = createTRPCProxyClient<AppRouter>({
+        transformer,
         links: [
             httpBatchLink({
                 url: 'http://localhost:3000/trpc',
@@ -22,69 +48,47 @@ async function main() {
         ],
     });
 
-    // 1. Subscription with recovery/operators (tap/map/filter)
-    console.log('[phase 1] setting up reactive listeners...');
+    // 1. Subscription
     alice.chat.onMessage.subscribe({ roomId: 'general' }, {
         onData: (msg) => {
-            console.log(`[live] ${msg.author}: ${msg.text}`);
+            console.log(`\x1b[90m[live]\x1b[0m ${msg.author}: ${msg.text} (${msg.timestamp.toLocaleTimeString()})`);
         },
     });
 
     await new Promise(r => setTimeout(r, 500));
 
-    // 2. Optimistic Update Simulation
-    console.log('\n[phase 2] performing optimistic update simulation...');
-    const newMessage = { text: 'optimistic hello', roomId: 'general' };
+    // 2. Mutations & Optimistic Logic
+    console.log('\n[Mutation] Sending message as Bob...');
+    const result = await bob.chat.sendMessage.mutate({ text: 'Hello Alice!', roomId: 'general' });
+    console.log(`[Success] Message ID: ${result.id}`);
+    console.log(`[Verify] Timestamp is Date object: ${result.timestamp instanceof Date}`);
 
-    // Simulate UI update before network
-    console.log(`[ui] rendering (optimistic): bob: ${newMessage.text}`);
+    // 3. Pagination
+    console.log('\n[Query] Fetching message history...');
+    const history = await alice.chat.getInfiniteMessages.query({ limit: 5 });
+    console.log(`[Success] Retrieved ${history.items.length} messages.`);
 
-    const actualMessage = await bob.chat.sendMessage.mutate(newMessage);
-    console.log(`[server] confirmed message id: ${actualMessage.id}`);
-
-    // 3. Infinite Loading (Pagination)
-    console.log('\n[phase 3] testing infinite loading (cursor-based)...');
-
-    // Fill up some messages
-    for (let i = 0; i < 5; i++) {
-        await bob.chat.sendMessage.mutate({ text: `message ${i}`, roomId: 'general' });
-    }
-
-    console.log('fetching first page...');
-    const page1 = await alice.chat.getInfiniteMessages.query({ limit: 3 });
-    console.log(`page 1 items: ${page1.items.length}, nextCursor: ${page1.nextCursor}`);
-
-    if (page1.nextCursor) {
-        console.log('fetching second page...');
-        const page2 = await alice.chat.getInfiniteMessages.query({
-            limit: 3,
-            cursor: page1.nextCursor
-        });
-        console.log(`page 2 items: ${page2.items.length}, nextCursor: ${page2.nextCursor}`);
-    }
-
-    // 4. File Upload (Base64)
-    console.log('\n[phase 4] testing file upload...');
-    const uploadResult = await bob.chat.uploadFile.mutate({
-        filename: 'profile.png',
-        base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+    // 4. File Upload
+    console.log('\n[Mutation] Uploading file...');
+    const file = await bob.chat.uploadFile.mutate({
+        filename: 'demo.txt',
+        base64: Buffer.from('Hello tinyRPC').toString('base64'),
     });
-    console.log(`upload successful: ${uploadResult.url}`);
+    console.log(`[Success] File URL: ${file.url}`);
 
-    // 5. Rate Limiting Check
-    console.log('\n[phase 5] reaching rate limits...');
+    // 5. Rate Limiting / Error Handling
+    console.log('\n[Testing] Spamming requests to test rate limiting...');
     try {
-        const promises = [];
-        for (let i = 0; i < 60; i++) {
-            promises.push(bob.chat.sendMessage.mutate({ text: 'spam', roomId: 'general' }));
-        }
-        await Promise.all(promises);
+        await Promise.all(
+            Array.from({ length: 60 }).map(() =>
+                bob.chat.sendMessage.mutate({ text: 'spam', roomId: 'general' })
+            )
+        );
     } catch (e: any) {
-        console.log(`[expected error] ${e.message}`);
+        console.log(`\x1b[31m[Expected Error]\x1b[0m ${e.message || 'Rate limit exceeded'}`);
     }
 
-    await new Promise(r => setTimeout(r, 1000));
-    console.log('\ndemo finished');
+    console.log('\n\x1b[32mDemo finished successfully.\x1b[0m');
     process.exit(0);
 }
 

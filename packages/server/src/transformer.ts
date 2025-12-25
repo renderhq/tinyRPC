@@ -1,3 +1,6 @@
+/**
+ * @internal
+ */
 export interface DataTransformer {
     serialize(obj: any): any;
     deserialize(obj: any): any;
@@ -5,7 +8,19 @@ export interface DataTransformer {
 
 /**
  * @internal
- * The default transformer is a passthrough.
+ */
+export interface CombinedDataTransformer {
+    input: DataTransformer;
+    output: DataTransformer;
+}
+
+/**
+ * @internal
+ */
+export type DataTransformerOptions = DataTransformer | CombinedDataTransformer;
+
+/**
+ * Default transformer that does nothing.
  */
 export const defaultTransformer: DataTransformer = {
     serialize: (obj) => obj,
@@ -14,12 +29,19 @@ export const defaultTransformer: DataTransformer = {
 
 /**
  * @internal
- * Check if the provided object is a valid transformer.
  */
-export function isTransformer(obj: any): obj is DataTransformer {
-    return (
-        obj &&
-        typeof obj.serialize === 'function' &&
-        typeof obj.deserialize === 'function'
-    );
+export function getTransformer(transformer?: DataTransformerOptions): CombinedDataTransformer {
+    if (!transformer) {
+        return {
+            input: defaultTransformer,
+            output: defaultTransformer,
+        };
+    }
+    if ('input' in transformer && 'output' in transformer) {
+        return transformer;
+    }
+    return {
+        input: transformer,
+        output: transformer,
+    };
 }

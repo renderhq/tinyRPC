@@ -4,8 +4,8 @@ import type { ProcedureParams, MiddlewareFunction } from '../types.js';
 /**
  * Audit log middleware
  */
-export function auditLogMiddleware(): MiddlewareFunction<any, any> {
-    return async (opts: any) => {
+export function auditLogMiddleware<TParams extends ProcedureParams>(): MiddlewareFunction<TParams, TParams> {
+    return async (opts) => {
         const { path, type } = opts;
         const start = Date.now();
         const result = await opts.next();
@@ -20,13 +20,13 @@ export function auditLogMiddleware(): MiddlewareFunction<any, any> {
 /**
  * Basic in-memory rate limiting middleware
  */
-export function rateLimitMiddleware(opts: {
+export function rateLimitMiddleware<TParams extends ProcedureParams>(opts: {
     limit: number;
     windowMs: number;
-}): MiddlewareFunction<any, any> {
+}): MiddlewareFunction<TParams, TParams> {
     const hits = new Map<string, { count: number; reset: number }>();
 
-    return async (innerOpts: any) => {
+    return async (innerOpts) => {
         const { ctx, next } = innerOpts;
         const identifier = (ctx as any).req?.socket?.remoteAddress || (ctx as any).user?.id || 'anonymous';
 

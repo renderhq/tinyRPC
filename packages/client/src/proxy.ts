@@ -10,39 +10,59 @@ let idCounter = 0;
  */
 export function createTRPCProxyClient<TRouter extends AnyRouter>(opts: {
     links: TRPCLink[];
+    transformer?: any;
 }): TRPCProxyClient<TRouter> {
-    const { links } = opts;
+    const { links, transformer: transformerOpts } = opts;
+
+    const transformer = transformerOpts ? (
+        typeof transformerOpts.serialize === 'function'
+            ? { input: transformerOpts, output: transformerOpts }
+            : transformerOpts
+    ) : {
+        input: { serialize: (v: any) => v },
+        output: { deserialize: (v: any) => v }
+    };
 
     function createProxy(path: string[]): any {
         return new Proxy(() => { }, {
             get(_target, prop: string) {
                 if (['query', 'mutate', 'subscribe'].includes(prop)) {
-                    return (input: any, opts?: any) => {
-                        const type = prop === 'query' ? 'query' as const : prop === 'mutate' ? 'mutation' as const : 'subscription' as const;
+                    return (input: any, clientOpts?: any) => {
+                        const type = prop === 'query' ? 'query' : prop === 'mutate' ? 'mutation' : 'subscription';
+                        const serializedInput = transformer.input.serialize ? transformer.input.serialize(input) : input;
+
                         const op = {
                             path: path.join('.'),
                             type,
-                            input,
+                            input: serializedInput,
                             id: ++idCounter,
                         };
 
+                        const chain = executeLinkChain({ links, op });
+
                         if (prop === 'subscribe') {
-                            const observable = executeLinkChain({ links, op });
-                            if (opts && (opts.onData || opts.onError || opts.onComplete)) {
-                                observable.subscribe({
-                                    next: opts.onData,
-                                    error: opts.onError,
-                                    complete: opts.onComplete,
+                            const transformed = chain.map((data: any) =>
+                                transformer.output.deserialize ? transformer.output.deserialize(data) : data
+                            );
+
+                            if (clientOpts && (clientOpts.onData || clientOpts.onError || clientOpts.onComplete)) {
+                                transformed.subscribe({
+                                    next: clientOpts.onData,
+                                    error: clientOpts.onError,
+                                    complete: clientOpts.onComplete,
                                 });
                             }
-                            return observable;
+                            return transformed;
                         }
 
-                        return executeLinkChain({ links, op }).then((res: any) => {
+                        return chain.then((res: any) => {
                             if (res.error) {
+                                if (res.error.data && transformer.output.deserialize) {
+                                    res.error.data = transformer.output.deserialize(res.error.data);
+                                }
                                 throw res;
                             }
-                            return res.result.data;
+                            return transformer.output.deserialize ? transformer.output.deserialize(res.result.data) : res.result.data;
                         });
                     };
                 }

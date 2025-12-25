@@ -1,10 +1,11 @@
 import { WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
-import type { Router, TRPCResponse } from '../types.js';
+import type { Router } from '../types.js';
 import { TRPCError } from '../errors.js';
 import { callProcedure } from '../middleware.js';
 import { transformTRPCResponse } from '../errorUtils.js';
 import type { Unsubscribable } from '../observable.js';
+import { getTransformer } from '../transformer.js';
 
 interface WSMessage {
     id: string | number;
@@ -20,6 +21,7 @@ export function createWSHandler(opts: {
     createContext: (opts: { req: IncomingMessage; ws: WebSocket }) => Promise<any>;
 }) {
     const { router, createContext } = opts;
+    const transformer = getTransformer(router._def.config?.transformer);
 
     return (ws: WebSocket, req: IncomingMessage) => {
         const subscriptions = new Map<string | number, Unsubscribable>();
@@ -54,12 +56,14 @@ export function createWSHandler(opts: {
                 }
 
                 const procedure = current;
+                // Deserialize input
+                const procedureInput = transformer.input.deserialize(params.input);
 
                 if (method === 'subscription') {
                     const observable = await callProcedure({
                         procedure,
                         ctx,
-                        input: params.input,
+                        input: procedureInput,
                         path: params.path,
                         type: 'subscription',
                     });
@@ -70,7 +74,7 @@ export function createWSHandler(opts: {
                                 id,
                                 result: {
                                     type: 'data',
-                                    data,
+                                    data: transformer.output.serialize(data),
                                 },
                             }));
                         },
@@ -79,9 +83,13 @@ export function createWSHandler(opts: {
                                 code: 'INTERNAL_SERVER_ERROR',
                                 message: err.message,
                             });
+                            const response = transformTRPCResponse(trpcError, params.path);
+                            if (response.error.data) {
+                                response.error.data = transformer.output.serialize(response.error.data);
+                            }
                             ws.send(JSON.stringify({
                                 id,
-                                error: transformTRPCResponse(trpcError, params.path).error,
+                                error: response.error,
                             }));
                         },
                         complete: () => {
@@ -99,7 +107,7 @@ export function createWSHandler(opts: {
                     const data = await callProcedure({
                         procedure,
                         ctx,
-                        input: params.input,
+                        input: procedureInput,
                         path: params.path,
                         type: method as any,
                     });
@@ -108,7 +116,7 @@ export function createWSHandler(opts: {
                         id,
                         result: {
                             type: 'data',
-                            data,
+                            data: transformer.output.serialize(data),
                         },
                     }));
                 }
@@ -117,9 +125,13 @@ export function createWSHandler(opts: {
                     code: 'INTERNAL_SERVER_ERROR',
                     message: err.message,
                 });
+                const response = transformTRPCResponse(trpcError, params.path);
+                if (response.error.data) {
+                    response.error.data = transformer.output.serialize(response.error.data);
+                }
                 ws.send(JSON.stringify({
                     id,
-                    error: transformTRPCResponse(trpcError, params.path).error,
+                    error: response.error,
                 }));
             }
         });
@@ -144,6 +156,6 @@ export function applyWSHandler(opts: {
     const handler = createWSHandler({ router, createContext });
 
     wss.on('connection', (ws, req) => {
-        handler(ws, req);
+        handler(ws as any, req);
     });
 }

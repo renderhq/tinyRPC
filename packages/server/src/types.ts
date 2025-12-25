@@ -1,5 +1,7 @@
-import { ZodType } from 'zod';
+import type { ZodType } from 'zod';
 import { TRPCError } from './errors.js';
+import type { DataTransformerOptions } from './transformer.js';
+import { Observable } from './observable.js';
 
 export type MaybePromise<T> = T | Promise<T>;
 
@@ -10,7 +12,7 @@ export interface AnyRootConfig {
     ctx: any;
     meta: any;
     errorShape?: any;
-    transformer?: any;
+    transformer?: DataTransformerOptions;
 }
 
 /**
@@ -79,8 +81,6 @@ export type MiddlewareFunction<
     TParams extends ProcedureParams,
     TNewParams extends ProcedureParams
 > = (opts: MiddlewareOptions<TParams>) => Promise<MiddlewareResult<TNewParams>>;
-
-import { Observable } from './observable.js';
 
 /**
  * @internal
