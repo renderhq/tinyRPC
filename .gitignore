@@ -26,3 +26,12 @@ yarn.lock           # if using npm and don’t want the other
 # OS files
 .DS_Store
 Thumbs.db
+
+# TypeScript generated files
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+*.tsbuildinfo
+!example/**/*.js
+!packages/**/node_modules
