@@ -47,39 +47,43 @@ type Context = Awaited<ReturnType<typeof createContext>>;
 const t = initTRPC.create<{
     ctx: Context;
     meta: { requiredRole?: 'ADMIN' | 'USER' };
+    errorShape: any;
+    transformer: any;
 }>();
 
+import { auditLogMiddleware, rateLimitMiddleware } from '@tinyrpc/server';
+
 // Middlewares
-const loggerMiddleware = t.middleware(async ({ path, type, next }) => {
-    const start = Date.now();
-    const result = await next();
-    const durationMs = Date.now() - start;
-    console.log(`[TRPC] ${type.toUpperCase()} ${path} - ${durationMs}ms`);
-    return result;
-});
+const loggerMiddleware = t.middleware(auditLogMiddleware());
+
+const rateLimit = t.middleware(rateLimitMiddleware({
+    limit: 50,
+    windowMs: 60 * 1000,
+}));
 
 const isAuthed = t.middleware(({ ctx, next, meta }) => {
-    if (!ctx.user) {
+    const user = ctx.user;
+    if (!user) {
         throw new TRPCError({
             code: 'UNAUTHORIZED',
             message: 'Authentication required. Pass "token_alice" or "token_bob" in Authorization header.',
         });
     }
 
-    if (meta?.requiredRole && ctx.user.role !== meta.requiredRole) {
+    if (meta?.requiredRole && user.role !== meta.requiredRole) {
         throw new TRPCError({
             code: 'FORBIDDEN',
-            message: `Restricted to ${meta.requiredRole}. Your role: ${ctx.user.role}`,
+            message: `Restricted to ${meta.requiredRole}. Your role: ${user.role}`,
         });
     }
 
     return next({
-        ctx: { user: ctx.user },
+        ctx: { user },
     });
 });
 
 const publicProcedure = t.procedure.use(loggerMiddleware);
-const protectedProcedure = publicProcedure.use(isAuthed);
+const protectedProcedure = publicProcedure.use(rateLimit).use(isAuthed);
 
 // Routers
 const chatRouter = t.router({
@@ -103,12 +107,51 @@ const chatRouter = t.router({
             return message;
         }),
 
+    uploadFile: protectedProcedure
+        .input(z.object({
+            filename: z.string(),
+            base64: z.string(),
+        }))
+        .mutation(({ input }) => {
+            console.log(`[storage] received file: ${input.filename} (${input.base64.length} bytes)`);
+            return {
+                url: `https://fake-storage.com/${input.filename}`,
+            };
+        }),
+
     getMessages: publicProcedure
         .input(z.object({ roomId: z.string().default('general') }))
         .query(({ input }) => {
             return db.messages
                 .filter(m => m.roomId === input.roomId)
                 .slice(-50);
+        }),
+
+    getInfiniteMessages: publicProcedure
+        .input(z.object({
+            roomId: z.string().default('general'),
+            limit: z.number().min(1).max(100).default(10),
+            cursor: z.string().nullish(), // message ID
+        }))
+        .query(({ input }) => {
+            const { roomId, limit, cursor } = input;
+            const roomMessages = db.messages.filter(m => m.roomId === roomId);
+
+            let items = roomMessages;
+            if (cursor) {
+                const cursorIndex = roomMessages.findIndex(m => m.id === cursor);
+                if (cursorIndex !== -1) {
+                    items = roomMessages.slice(0, cursorIndex);
+                }
+            }
+
+            const nextMessages = items.slice(-(limit || 10));
+            const nextCursor = nextMessages.length > 0 ? nextMessages[0]!.id : null;
+
+            return {
+                items: nextMessages,
+                nextCursor,
+            };
         }),
 
     onMessage: publicProcedure

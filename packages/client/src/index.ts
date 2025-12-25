@@ -1,4 +1,4 @@
-import type { AnyRouter } from '../../server/src/types.js';
+import type { AnyRouter } from '@tinyrpc/server';
 import { createTRPCProxyClient } from './proxy.js';
 
 export * from './proxy.js';

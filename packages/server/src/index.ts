@@ -13,6 +13,7 @@ export * from './dispatch.js';
 export * from './errorUtils.js';
 export * from './observable.js';
 export * from './adapters/ws.js';
+export * from './middlewares/index.js';
 
 /**
  * @internal
