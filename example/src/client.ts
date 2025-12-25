@@ -1,81 +1,76 @@
 import { createTRPCProxyClient, httpBatchLink, wsLink } from '@tinyrpc/client';
 import type { AppRouter } from './server.js';
 
-const protocolLoggerLink = () => {
-    return ({ op, next }: any) => {
-        const start = Date.now();
-        console.log(`[Protocol] OUT -> ${op.type} ${op.path} (ID: ${op.id})`);
+async function main() {
+    console.log('--- starting tinyrpc chat demo ---');
 
-        return next(op).then((res: any) => {
-            const duration = Date.now() - start;
-            console.log(`[Protocol] IN <- ${op.path} (ID: ${op.id}) within ${duration}ms`);
-            return res;
-        });
-    };
-};
-
-async function runDemo() {
-    console.log('--- Starting tRPC v10 Demo with WebSocket Subscriptions ---');
-
-    const client = createTRPCProxyClient<AppRouter>({
-        links: [
-            protocolLoggerLink(),
-            httpBatchLink({
-                url: 'http://localhost:3000/trpc',
-                headers: () => ({
-                    Authorization: 'user_1',
-                }),
-            }),
-        ],
-    });
-
-    const wsClient = createTRPCProxyClient<AppRouter>({
+    // 1. alice (admin) client via websocket
+    const alice = createTRPCProxyClient<AppRouter>({
         links: [
             wsLink({
                 url: 'ws://localhost:3000',
-                headers: () => ({
-                    Authorization: 'user_1',
-                }),
+                headers: () => ({ Authorization: 'token_alice' }),
             }),
         ],
     });
 
+    // 2. bob (user) client via http
+    const bob = createTRPCProxyClient<AppRouter>({
+        links: [
+            httpBatchLink({
+                url: 'http://localhost:3000/trpc',
+                headers: () => ({ Authorization: 'token_bob' }),
+            }),
+        ],
+    });
+
+    console.log('[phase 1] alice subscribing...');
+    const sub = alice.chat.onMessage.subscribe({ roomId: 'tech' }, {
+        onData: (msg) => {
+            console.log(`[live] alice received: ${msg.author}: ${msg.text}`);
+        },
+        onError: (err) => console.error('subscription error:', err),
+    });
+
+    await new Promise(r => setTimeout(r, 1000));
+
+    console.log('[phase 2] bob sending messages...');
+    await bob.chat.sendMessage.mutate({
+        text: 'hello from bob',
+        roomId: 'tech'
+    });
+
+    await new Promise(r => setTimeout(r, 500));
+
+    await bob.chat.sendMessage.mutate({
+        text: 'second message from bob',
+        roomId: 'tech'
+    });
+
+    await new Promise(r => setTimeout(r, 1000));
+
+    console.log('[phase 3] alice clearing chat...');
     try {
-        console.log('\n[Phase 1] Health Check');
-        const health = await client.health.query({});
-        console.log('Result:', JSON.stringify(health));
-
-        console.log('\n[Phase 2] Create Task');
-        const newTask = await client.tasks.create.mutate({ title: 'Test WebSocket Subscriptions' });
-        console.log('Created:', JSON.stringify(newTask));
-
-        console.log('\n[Phase 3] Subscribe to Task Updates');
-        const observable = (wsClient.tasks.onUpdate as any).subscribe({});
-
-        const unsub = observable.subscribe({
-            next: (data: any) => {
-                console.log('[Subscription] Received update:', JSON.stringify(data));
-            },
-            error: (err: any) => {
-                console.error('[Subscription] Error:', err);
-            },
-            complete: () => {
-                console.log('[Subscription] Complete');
-            },
-        });
-
-        console.log('Listening for task updates (will run for 10 seconds)...');
-
-        setTimeout(() => {
-            unsub.unsubscribe();
-            console.log('\n--- Demo Completed ---');
-            process.exit(0);
-        }, 10000);
-
-    } catch (err) {
-        console.error('System Failure:', JSON.stringify(err, null, 2));
-        process.exit(1);
+        const result = await alice.admin.clearChat.mutate({});
+        console.log('chat cleared:', result);
+    } catch (e: any) {
+        console.error('clear chat failed:', e.message);
     }
+
+    console.log('[phase 4] unauthorized check...');
+    try {
+        await bob.admin.clearChat.mutate({});
+    } catch (e: any) {
+        console.log(`[expected error] bob failed to clear chat: ${e.message}`);
+    }
+
+    await new Promise(r => setTimeout(r, 1000));
+
+    console.log('demo finished');
+    process.exit(0);
 }
 
-runDemo();
+main().catch(err => {
+    console.error('fatal error:', err);
+    process.exit(1);
+});
