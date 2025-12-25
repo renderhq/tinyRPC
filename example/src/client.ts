@@ -1,10 +1,6 @@
-import { createTRPCProxyClient, httpBatchLink } from '../../packages/client/src/index.js';
+import { createTRPCProxyClient, httpBatchLink, wsLink } from '../../packages/client/src/index.js';
 import type { AppRouter } from './server.js';
 
-/**
- * [INTERNAL] Protocol Interceptor Link
- * Mirroring how a super senior engineer would debug the link chain.
- */
 const protocolLoggerLink = () => {
     return ({ op, next }: any) => {
         const start = Date.now();
@@ -18,25 +14,12 @@ const protocolLoggerLink = () => {
     };
 };
 
-/**
- * [INTERNAL] Simulated Network Lag Link
- * Demonstrates the micro-task window for batching.
- */
-const simulatedLagLink = (ms: number) => {
-    return async ({ op, next }: any) => {
-        await new Promise(r => setTimeout(r, ms));
-        return next(op);
-    };
-};
-
 async function runDemo() {
-    console.log('--- Starting tRPC v10 High-Fidelity Demo ---');
+    console.log('--- Starting tRPC v10 Demo with WebSocket Subscriptions ---');
 
-    // Client with authentication configured for user_1 (Admin)
-    const adminClient = createTRPCProxyClient<AppRouter>({
+    const client = createTRPCProxyClient<AppRouter>({
         links: [
             protocolLoggerLink(),
-            simulatedLagLink(20), // 20ms simulated internal overhead
             httpBatchLink({
                 url: 'http://localhost:3000/trpc',
                 headers: () => ({
@@ -46,50 +29,51 @@ async function runDemo() {
         ],
     });
 
-    // Client without authentication to demonstrate error handling
-    const guestClient = createTRPCProxyClient<AppRouter>({
+    const wsClient = createTRPCProxyClient<AppRouter>({
         links: [
-            httpBatchLink({ url: 'http://localhost:3000/trpc' }),
+            wsLink({
+                url: 'ws://localhost:3000',
+                headers: () => ({
+                    Authorization: 'user_1',
+                }),
+            }),
         ],
     });
 
     try {
-        // 1. Health check (Public & Faster)
-        console.log('\n[Phase 1] Public Health Check');
-        const health = await adminClient.health.query({});
+        console.log('\n[Phase 1] Health Check');
+        const health = await client.health.query({});
         console.log('Result:', JSON.stringify(health));
 
-        // 2. Demonstrating Authentication Failure
-        console.log('\n[Phase 2] Security Verification (Expecting Guest Failure)');
-        try {
-            await guestClient.tasks.list.query({});
-        } catch (err: any) {
-            console.log('Success: Correctly blocked unauthorized request ->', err.error.message);
-        }
+        console.log('\n[Phase 2] Create Task');
+        const newTask = await client.tasks.create.mutate({ title: 'Test WebSocket Subscriptions' });
+        console.log('Created:', JSON.stringify(newTask));
 
-        // 3. Batched Authenticated Operations
-        console.log('\n[Phase 3] Batched Pipeline Verification');
-        console.log('(Running list.query and create.mutate in parallel - check [Protocol] logs)');
+        console.log('\n[Phase 3] Subscribe to Task Updates');
+        const observable = (wsClient.tasks.onUpdate as any).subscribe({});
 
-        const [tasks, createdTask] = await Promise.all([
-            adminClient.tasks.list.query({ completed: true }),
-            adminClient.tasks.create.mutate({ title: 'Finalize End-to-End Excellence' }),
-        ]);
+        const unsub = observable.subscribe({
+            next: (data: any) => {
+                console.log('[Subscription] Received update:', JSON.stringify(data));
+            },
+            error: (err: any) => {
+                console.error('[Subscription] Error:', err);
+            },
+            complete: () => {
+                console.log('[Subscription] Complete');
+            },
+        });
 
-        console.log('Initial Completed Tasks:', (tasks as any[]).length);
-        console.log('Newly Created Task:', JSON.stringify(createdTask));
+        console.log('Listening for task updates (will run for 10 seconds)...');
 
-        // 4. Persistence & Relationship Verification
-        console.log('\n[Phase 4] Persistence Verification');
-        const finalTasks = await adminClient.tasks.list.query({});
-        console.log('Final Task Registry Count:', (finalTasks as any[]).length);
-        const titles = (finalTasks as any[]).map(t => t.title);
-        console.log('Registry Snapshot:', titles.join(' | '));
+        setTimeout(() => {
+            unsub.unsubscribe();
+            console.log('\n--- Demo Completed ---');
+            process.exit(0);
+        }, 10000);
 
-        console.log('\n--- Demo Completed Successfully ---');
     } catch (err) {
-        console.error('\nCRITICAL SYSTEM FAILURE');
-        console.error(JSON.stringify(err, null, 2));
+        console.error('System Failure:', JSON.stringify(err, null, 2));
         process.exit(1);
     }
 }
