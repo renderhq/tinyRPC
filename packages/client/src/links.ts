@@ -1,3 +1,5 @@
+import { Observable } from './observable.js';
+
 /**
  * @public
  */
@@ -15,18 +17,18 @@ export interface Operation {
 export interface TRPCLink {
     (opts: {
         op: Operation;
-        next: (op: Operation) => Promise<any>;
-    }): Promise<any>;
+        next: (op: Operation) => any;
+    }): any;
 }
 
 /**
  * @internal
  */
-export async function executeLinkChain(opts: {
+export function executeLinkChain(opts: {
     links: TRPCLink[];
     op: Operation;
-}): Promise<any> {
-    const execute = (index: number, op: Operation): Promise<any> => {
+}): any {
+    const execute = (index: number, op: Operation): any => {
         const link = opts.links[index];
         if (!link) {
             throw new Error(`Link chain exhausted. Path: ${op.path}`);
