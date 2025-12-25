@@ -1,8 +1,6 @@
-
-
 # tinyRPC
 
-Minimal TypeScript RPC framework inspired by tRPC v10. Provides **type-safe procedures**, **nested routers**, **middleware support**, and **Zod validation** for building scalable server-client applications.
+Minimal TypeScript RPC framework inspired by tRPC v10. Provides **type-safe procedures**, **nested routers**, **middleware support**, **WebSocket subscriptions**, and **Zod validation** for building scalable server-client applications.
 
 [GitHub](https://github.com/renderhq/tinyRPC) • [Organization](https://github.com/renderhq) • [Twitter](https://x.com/infinterenders)
 
@@ -10,11 +8,13 @@ Minimal TypeScript RPC framework inspired by tRPC v10. Provides **type-safe proc
 
 ## Setup
 
+This project uses `pnpm` workspaces.
+
 ```bash
 git clone https://github.com/renderhq/tinyRPC.git
 cd tinyRPC
-npm install
-npx tsc
+pnpm install
+pnpm build
 ```
 
 ---
@@ -24,23 +24,23 @@ npx tsc
 **Server:**
 
 ```bash
-node dist/example/src/server.js
+pnpm dev:server
 ```
 
 **Client (separate terminal):**
 
 ```bash
-node dist/example/src/client.js
+pnpm dev:client
 ```
 
 ---
 
 ## Usage
 
-### Server
+### Server (`@tinyrpc/server`)
 
 ```ts
-import { initTRPC } from './packages/server/src/index.js';
+import { initTRPC, observable } from '@tinyrpc/server';
 import { z } from 'zod';
 
 const t = initTRPC.create<{ ctx: Context }>();
@@ -51,93 +51,84 @@ const appRouter = t.router({
   tasks: t.router({
     list: t.procedure
       .input(z.object({ completed: z.boolean().optional() }))
-      .query(({ ctx }) => ctx.db.tasks),
+      .query(({ ctx }) => Array.from(ctx.db.tasks.values())),
     
-    create: t.procedure
-      .input(z.object({ title: z.string() }))
-      .mutation(({ ctx, input }) => {
-        const task = { id: randomId(), title: input.title };
-        ctx.db.tasks.push(task);
-        return task;
-      }),
+    onUpdate: t.procedure.subscription(() => {
+      return observable((observer) => {
+        const timer = setInterval(() => {
+          observer.next({ message: 'Live update' });
+        }, 1000);
+        return () => clearInterval(timer);
+      });
+    }),
   }),
 });
 
 export type AppRouter = typeof appRouter;
 ```
 
-**HTTP Server:**
+### Client (`@tinyrpc/client`)
 
 ```ts
-import { createHTTPHandler } from './packages/server/src/index.js';
-import http from 'http';
-
-const handler = createHTTPHandler({
-  router: appRouter,
-  createContext: () => ({ db: myDatabase }),
-});
-
-http.createServer(handler).listen(3000);
-```
-
-### Client
-
-```ts
-import { createTRPCProxyClient, httpBatchLink } from './packages/client/src/index.js';
+import { createTRPCProxyClient, httpBatchLink, wsLink } from '@tinyrpc/client';
 import type { AppRouter } from './server.js';
 
 const client = createTRPCProxyClient<AppRouter>({
-  links: [httpBatchLink({ url: 'http://localhost:3000/trpc' })],
+  links: [
+    // Standard HTTP batching
+    httpBatchLink({ url: 'http://localhost:3000/trpc' }),
+    // WebSocket support for subscriptions
+    wsLink({ url: 'ws://localhost:3000' })
+  ],
 });
 
-const health = await client.health.query({});
+// Query
 const tasks = await client.tasks.list.query({ completed: true });
-const newTask = await client.tasks.create.mutate({ title: 'New task' });
+
+// Subscription
+const sub = client.tasks.onUpdate.subscribe(undefined, {
+  onData: (data) => console.log('Received:', data),
+});
 ```
 
 ---
 
 ## Project Structure
 
+This is a **pnpm monorepo** with the following packages:
+
+-   `@tinyrpc/server`: The core server logic and procedure builders.
+-   `@tinyrpc/client`: The type-safe proxy client and link system.
+-   `example`: A demonstration project showing bidirectional communication.
+
 ```
 packages/
-  server/src/
-    index.ts       - Exports
-    types.ts       - Type definitions
-    procedure.ts   - Procedure builder
-    router.ts      - Router creation
-    middleware.ts  - Middleware execution
-    dispatch.ts    - HTTP handler
-    errors.ts      - Error types
-    errorUtils.ts  - Error utilities
-  client/src/
-    index.ts       - Exports
-    types.ts       - Type inference
-    proxy.ts       - Proxy client
-    links.ts       - HTTP links
-example/src/
-  server.ts        - Server implementation
-  client.ts        - Client implementation
+  server/
+    package.json
+    src/
+      adapters/ws.ts - WebSocket adapter
+      index.ts       - Exports
+      procedure.ts   - Procedure builder
+      observable.ts  - Reactive streams
+  client/
+    package.json
+    src/
+      links/ws.ts    - WebSocket link
+      proxy.ts       - Proxy client
+example/
+  package.json
+  src/
+    server.ts        - Server implementation
+    client.ts        - Client implementation
 ```
 
 ---
 
 ## Features
 
-*  Type-safe procedures
-*  Zod input validation
-*  Middleware support
-*  Nested routers
-*  Request batching
-*  Context transformation
-
----
-
-## Development
-
-```bash
-npx tsc --watch
-```
-
-
-Do you want me to do that too?
+-   **Type-safe procedures**: End-to-end type safety without code generation.
+-   **Zod validation**: Built-in input and output validation.
+-   **Middleware**: Composable middleware chain with context transformation.
+-   **WebSocket Subscriptions**: Real-time push notifications using `Observable`.
+-   **Request Batching**: Group multiple queries into a single HTTP request.
+-   **Monorepo Support**: Proper package organization via pnpm workspaces.
