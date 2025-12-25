@@ -15,9 +15,15 @@
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",
-    "types": [
-      "node"
-    ],
+    "baseUrl": ".",
+    "paths": {
+      "@tinyrpc/server": [
+        "./packages/server/src/index.ts"
+      ],
+      "@tinyrpc/client": [
+        "./packages/client/src/index.ts"
+      ]
+    },
     "lib": [
       "esnext"
     ]

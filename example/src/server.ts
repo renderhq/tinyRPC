@@ -1,4 +1,4 @@
-import { initTRPC, TRPCError, createHTTPHandler, applyWSHandler, observable } from '../../packages/server/src/index.js';
+import { initTRPC, TRPCError, createHTTPHandler, applyWSHandler, observable } from '@tinyrpc/server';
 import { z } from 'zod';
 import http from 'http';
 import { WebSocketServer } from 'ws';
