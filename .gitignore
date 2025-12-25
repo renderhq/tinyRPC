@@ -35,5 +35,3 @@ Thumbs.db
 *.d.ts
 *.d.ts.map
 *.tsbuildinfo
-!example/**/*.js
-!packages/**/node_modules
