@@ -1,5 +1,6 @@
 # Node modules
 node_modules/
+**/node_modules/
 
 # Env files
 .env
@@ -9,6 +10,7 @@ node_modules/
 # Build output
 dist/
 build/
+*.tsbuildinfo
 
 # Logs
 npm-debug.log*
