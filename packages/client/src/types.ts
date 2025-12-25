@@ -1,4 +1,4 @@
-import type { AnyRouter, AnyProcedure, Procedure } from '../../server/src/types.js';
+import type { AnyRouter, AnyProcedure, Procedure } from '@tinyrpc/server';
 import { Observable } from './observable.js';
 
 /**

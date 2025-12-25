@@ -1,6 +1,5 @@
 /**
  * @public
- * Observer pattern for subscriptions
  */
 export interface Observer<T> {
     next: (value: T) => void;
@@ -10,7 +9,6 @@ export interface Observer<T> {
 
 /**
  * @public
- * Unsubscribe function
  */
 export interface Unsubscribable {
     unsubscribe: () => void;
@@ -18,37 +16,71 @@ export interface Unsubscribable {
 
 /**
  * @public
- * Observable implementation for subscriptions
  */
 export class Observable<T> {
     constructor(
-        private subscribeFn: (observer: Observer<T>) => Unsubscribable | (() => void)
+        private _subscribe: (observer: Observer<T>) => Unsubscribable | (() => void)
     ) { }
 
     subscribe(observer: Partial<Observer<T>>): Unsubscribable {
         const fullObserver: Observer<T> = {
-            next: observer.next || (() => { }),
-            error: observer.error || (() => { }),
-            complete: observer.complete || (() => { }),
+            next: (v) => observer.next?.(v),
+            error: (e) => observer.error?.(e),
+            complete: () => observer.complete?.(),
         };
 
-        const teardown = this.subscribeFn(fullObserver);
+        const teardown = this._subscribe(fullObserver);
 
         return {
             unsubscribe: () => {
                 if (typeof teardown === 'function') {
                     teardown();
-                } else {
+                } else if (teardown && 'unsubscribe' in teardown) {
                     teardown.unsubscribe();
                 }
             },
         };
     }
+
+    pipe<R>(...ops: Array<(obs: Observable<any>) => Observable<any>>): Observable<R> {
+        return ops.reduce((acc, op) => op(acc), this as any) as Observable<R>;
+    }
+}
+
+/**
+ * Operators
+ */
+
+export function map<T, R>(fn: (value: T) => R) {
+    return (source: Observable<T>): Observable<R> => {
+        return new Observable((observer) => {
+            return source.subscribe({
+                next: (value) => observer.next(fn(value)),
+                error: (err) => observer.error(err),
+                complete: () => observer.complete(),
+            });
+        });
+    };
+}
+
+export function filter<T>(fn: (value: T) => boolean) {
+    return (source: Observable<T>): Observable<T> => {
+        return new Observable((observer) => {
+            return source.subscribe({
+                next: (value) => {
+                    if (fn(value)) {
+                        observer.next(value);
+                    }
+                },
+                error: (err) => observer.error(err),
+                complete: () => observer.complete(),
+            });
+        });
+    };
 }
 
 /**
  * @public
- * Create an observable from a subscribe function
  */
 export function observable<T>(
     subscribe: (observer: Observer<T>) => Unsubscribable | (() => void)

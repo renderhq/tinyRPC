@@ -2,9 +2,8 @@ import { createTRPCProxyClient, httpBatchLink, wsLink } from '@tinyrpc/client';
 import type { AppRouter } from './server.js';
 
 async function main() {
-    console.log('--- starting tinyrpc chat demo ---');
+    console.log('--- starting tinyrpc production-ready demo ---');
 
-    // 1. alice (admin) client via websocket
     const alice = createTRPCProxyClient<AppRouter>({
         links: [
             wsLink({
@@ -14,7 +13,6 @@ async function main() {
         ],
     });
 
-    // 2. bob (user) client via http
     const bob = createTRPCProxyClient<AppRouter>({
         links: [
             httpBatchLink({
@@ -24,53 +22,70 @@ async function main() {
         ],
     });
 
-    console.log('[phase 1] alice subscribing...');
-    const sub = alice.chat.onMessage.subscribe({ roomId: 'tech' }, {
+    // 1. Subscription with recovery/operators (tap/map/filter)
+    console.log('[phase 1] setting up reactive listeners...');
+    alice.chat.onMessage.subscribe({ roomId: 'general' }, {
         onData: (msg) => {
-            console.log(`[live] alice received: ${msg.author}: ${msg.text}`);
+            console.log(`[live] ${msg.author}: ${msg.text}`);
         },
-        onError: (err) => console.error('subscription error:', err),
-    });
-
-    await new Promise(r => setTimeout(r, 1000));
-
-    console.log('[phase 2] bob sending messages...');
-    await bob.chat.sendMessage.mutate({
-        text: 'hello from bob',
-        roomId: 'tech'
     });
 
     await new Promise(r => setTimeout(r, 500));
 
-    await bob.chat.sendMessage.mutate({
-        text: 'second message from bob',
-        roomId: 'tech'
+    // 2. Optimistic Update Simulation
+    console.log('\n[phase 2] performing optimistic update simulation...');
+    const newMessage = { text: 'optimistic hello', roomId: 'general' };
+
+    // Simulate UI update before network
+    console.log(`[ui] rendering (optimistic): bob: ${newMessage.text}`);
+
+    const actualMessage = await bob.chat.sendMessage.mutate(newMessage);
+    console.log(`[server] confirmed message id: ${actualMessage.id}`);
+
+    // 3. Infinite Loading (Pagination)
+    console.log('\n[phase 3] testing infinite loading (cursor-based)...');
+
+    // Fill up some messages
+    for (let i = 0; i < 5; i++) {
+        await bob.chat.sendMessage.mutate({ text: `message ${i}`, roomId: 'general' });
+    }
+
+    console.log('fetching first page...');
+    const page1 = await alice.chat.getInfiniteMessages.query({ limit: 3 });
+    console.log(`page 1 items: ${page1.items.length}, nextCursor: ${page1.nextCursor}`);
+
+    if (page1.nextCursor) {
+        console.log('fetching second page...');
+        const page2 = await alice.chat.getInfiniteMessages.query({
+            limit: 3,
+            cursor: page1.nextCursor
+        });
+        console.log(`page 2 items: ${page2.items.length}, nextCursor: ${page2.nextCursor}`);
+    }
+
+    // 4. File Upload (Base64)
+    console.log('\n[phase 4] testing file upload...');
+    const uploadResult = await bob.chat.uploadFile.mutate({
+        filename: 'profile.png',
+        base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
     });
+    console.log(`upload successful: ${uploadResult.url}`);
 
-    await new Promise(r => setTimeout(r, 1000));
-
-    console.log('[phase 3] alice clearing chat...');
+    // 5. Rate Limiting Check
+    console.log('\n[phase 5] reaching rate limits...');
     try {
-        const result = await alice.admin.clearChat.mutate({});
-        console.log('chat cleared:', result);
+        const promises = [];
+        for (let i = 0; i < 60; i++) {
+            promises.push(bob.chat.sendMessage.mutate({ text: 'spam', roomId: 'general' }));
+        }
+        await Promise.all(promises);
     } catch (e: any) {
-        console.error('clear chat failed:', e.message);
-    }
-
-    console.log('[phase 4] unauthorized check...');
-    try {
-        await bob.admin.clearChat.mutate({});
-    } catch (e: any) {
-        console.log(`[expected error] bob failed to clear chat: ${e.message}`);
+        console.log(`[expected error] ${e.message}`);
     }
 
     await new Promise(r => setTimeout(r, 1000));
-
-    console.log('demo finished');
+    console.log('\ndemo finished');
     process.exit(0);
 }
 
-main().catch(err => {
-    console.error('fatal error:', err);
-    process.exit(1);
-});
+main().catch(console.error);

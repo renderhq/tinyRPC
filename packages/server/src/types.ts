@@ -9,8 +9,8 @@ export type MaybePromise<T> = T | Promise<T>;
 export interface AnyRootConfig {
     ctx: any;
     meta: any;
-    errorShape: any;
-    transformer: any;
+    errorShape?: any;
+    transformer?: any;
 }
 
 /**

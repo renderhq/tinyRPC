@@ -1,6 +1,6 @@
 import type { TRPCLink } from './links.js';
 import { executeLinkChain } from './links.js';
-import type { AnyRouter } from '../../server/src/types.js';
+import type { AnyRouter } from '@tinyrpc/server';
 import type { TRPCProxyClient } from './types.js';
 
 let idCounter = 0;

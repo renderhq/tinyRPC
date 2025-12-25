@@ -1,0 +1,14 @@
+{
+    "name": "@tinyrpc/benchmarks",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "bench": "tsx src/index.ts"
+    },
+    "dependencies": {
+        "@tinyrpc/client": "workspace:*",
+        "@tinyrpc/server": "workspace:*",
+        "zod": "^3.25.76",
+        "ws": "^8.18.3"
+    }
+}

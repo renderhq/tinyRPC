@@ -36,7 +36,26 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
-  packages/client: {}
+  packages/benchmarks:
+    dependencies:
+      '@tinyrpc/client':
+        specifier: workspace:*
+        version: link:../client
+      '@tinyrpc/server':
+        specifier: workspace:*
+        version: link:../server
+      ws:
+        specifier: ^8.18.3
+        version: 8.18.3
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
+  packages/client:
+    dependencies:
+      '@tinyrpc/server':
+        specifier: workspace:*
+        version: link:../server
 
   packages/server:
     dependencies:
