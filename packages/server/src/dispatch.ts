@@ -45,18 +45,84 @@ export async function resolveHTTPResponse(opts: {
     };
 }
 
+
+/**
+ * @public
+ */
+export interface CORSOptions {
+    origin?: string | string[] | ((origin: string) => boolean);
+    credentials?: boolean;
+    methods?: string[];
+    allowedHeaders?: string[];
+    exposedHeaders?: string[];
+    maxAge?: number;
+}
+
 /**
  * @internal
  */
 export function createHTTPHandler(opts: {
     router: Router<any>;
     createContext: (req: any, res: any) => Promise<any> | any;
+    cors?: CORSOptions | boolean;
 }) {
     return async (req: any, res: any) => {
-        const { router, createContext } = opts;
+        const { router, createContext, cors } = opts;
+
+        // Handle CORS
+        if (cors) {
+            const corsOpts: CORSOptions = cors === true ? {} : cors;
+            const requestOrigin = req.headers.origin || req.headers.referer;
+
+            // Set Access-Control-Allow-Origin
+            if (corsOpts.origin) {
+                if (typeof corsOpts.origin === 'function') {
+                    if (requestOrigin && corsOpts.origin(requestOrigin)) {
+                        res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+                    }
+                } else if (Array.isArray(corsOpts.origin)) {
+                    if (requestOrigin && corsOpts.origin.includes(requestOrigin)) {
+                        res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+                    }
+                } else {
+                    res.setHeader('Access-Control-Allow-Origin', corsOpts.origin);
+                }
+            } else {
+                res.setHeader('Access-Control-Allow-Origin', '*');
+            }
+
+            // Set other CORS headers
+            res.setHeader(
+                'Access-Control-Allow-Methods',
+                (corsOpts.methods || ['GET', 'POST', 'OPTIONS']).join(', ')
+            );
+            res.setHeader(
+                'Access-Control-Allow-Headers',
+                (corsOpts.allowedHeaders || ['Content-Type', 'Authorization']).join(', ')
+            );
+
+            if (corsOpts.credentials) {
+                res.setHeader('Access-Control-Allow-Credentials', 'true');
+            }
+
+            if (corsOpts.exposedHeaders) {
+                res.setHeader('Access-Control-Expose-Headers', corsOpts.exposedHeaders.join(', '));
+            }
+
+            if (corsOpts.maxAge) {
+                res.setHeader('Access-Control-Max-Age', String(corsOpts.maxAge));
+            }
+
+            // Handle preflight
+            if (req.method === 'OPTIONS') {
+                res.statusCode = 204;
+                res.end();
+                return;
+            }
+        }
+
         // Extract path and batch status
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        // Strip the base path (e.g., /trpc) if it exists
         const path = url.pathname.startsWith('/trpc')
             ? url.pathname.slice(5).replace(/^\//, '')
             : url.pathname.replace(/^\//, '');

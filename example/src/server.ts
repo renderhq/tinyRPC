@@ -108,6 +108,10 @@ export type AppRouter = typeof appRouter;
 const handler = createHTTPHandler({
     router: appRouter,
     createContext: (req, res) => createContext({ req, res }),
+    cors: {
+        origin: ['http://localhost:5173', 'http://localhost:3001'],
+        credentials: true,
+    },
 });
 
 const server = http.createServer((req, res) => {
