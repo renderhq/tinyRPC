@@ -1,4 +1,4 @@
-import { createTRPCProxyClient, httpBatchLink, wsLink } from '../../packages/client/src/index.js';
+import { createTRPCProxyClient, httpBatchLink, wsLink } from '@tinyrpc/client';
 import type { AppRouter } from './server.js';
 
 const protocolLoggerLink = () => {

@@ -1,0 +1,11 @@
+{
+    "name": "example",
+    "private": true,
+    "type": "module",
+    "dependencies": {
+        "@tinyrpc/client": "workspace:*",
+        "@tinyrpc/server": "workspace:*",
+        "zod": "^3.25.76",
+        "ws": "^8.18.3"
+    }
+}

@@ -1,22 +1,16 @@
 {
-  "name": "tinyrpc",
-  "version": "1.0.0",
+  "name": "tinyrpc-monorepo",
+  "private": true,
   "type": "module",
-  "main": "packages/server/src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "dev:server": "ts-node-esm example/src/server.ts",
-    "dev:client": "ts-node-esm example/src/client.ts"
-  },
-  "dependencies": {
-    "@types/ws": "^8.18.1",
-    "superjson": "^2.2.2",
-    "ws": "^8.18.3",
-    "zod": "^3.25.76"
+    "build": "pnpm -r build",
+    "dev:server": "tsx example/src/server.ts",
+    "dev:client": "tsx example/src/client.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.2"
   }
 }
