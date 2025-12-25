@@ -2,19 +2,19 @@
   "name": "tinyrpc",
   "version": "1.0.0",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "packages/server/src/index.ts",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node-esm src/index.ts"
+    "dev:server": "ts-node-esm example/src/server.ts",
+    "dev:client": "ts-node-esm example/src/client.ts"
   },
   "dependencies": {
     "superjson": "^2.2.2",
-    "zod": "^4.1.11"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^24.5.2",
+    "@types/node": "^22.10.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "typescript": "^5.7.2"
   }
 }
