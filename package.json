@@ -9,7 +9,9 @@
     "dev:client": "ts-node-esm example/src/client.ts"
   },
   "dependencies": {
+    "@types/ws": "^8.18.1",
     "superjson": "^2.2.2",
+    "ws": "^8.18.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {

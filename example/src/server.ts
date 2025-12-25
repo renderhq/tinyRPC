@@ -1,6 +1,7 @@
-import { initTRPC, TRPCError, createHTTPHandler } from '../../packages/server/src/index.js';
+import { initTRPC, TRPCError, createHTTPHandler, applyWSHandler, observable } from '../../packages/server/src/index.js';
 import { z } from 'zod';
 import http from 'http';
+import { WebSocketServer } from 'ws';
 
 interface Task {
     id: string;
@@ -19,7 +20,7 @@ const db = {
     ]),
 };
 
-export const createContext = async (opts: { req: http.IncomingMessage; res: http.ServerResponse }) => {
+export const createContext = async (opts: { req: http.IncomingMessage; res?: http.ServerResponse; ws?: any }) => {
     const sessionToken = opts.req.headers.authorization;
     const user = sessionToken ? db.users.get(sessionToken) : null;
 
@@ -96,6 +97,19 @@ const taskRouter = t.router({
             ctx.db.tasks.set(id, task);
             return task;
         }),
+
+    onUpdate: protectedProcedure.subscription(() => {
+        return observable<Task>((observer) => {
+            const interval = setInterval(() => {
+                const tasks = Array.from(db.tasks.values());
+                if (tasks.length > 0) {
+                    observer.next(tasks[tasks.length - 1]!);
+                }
+            }, 2000);
+
+            return () => clearInterval(interval);
+        });
+    }),
 });
 
 export const appRouter = t.router({
@@ -131,6 +145,15 @@ const server = http.createServer((req, res) => {
     }
 });
 
+const wss = new WebSocketServer({ server });
+
+applyWSHandler({
+    wss,
+    router: appRouter,
+    createContext: (opts) => createContext({ req: opts.req, ws: opts.ws }),
+});
+
 server.listen(3000, () => {
     console.log('Server listening on port 3000');
+    console.log('WebSocket server ready for subscriptions');
 });

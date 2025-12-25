@@ -80,6 +80,8 @@ export type MiddlewareFunction<
     TNewParams extends ProcedureParams
 > = (opts: MiddlewareOptions<TParams>) => Promise<MiddlewareResult<TNewParams>>;
 
+import { Observable } from './observable.js';
+
 /**
  * @internal
  */
@@ -90,7 +92,7 @@ export interface Procedure<TParams extends ProcedureParams> {
         resolver: (opts: {
             ctx: TParams['_ctx_out'];
             input: TParams['_input_out'];
-        }) => Promise<TParams['_output_out']>;
+        }) => Promise<TParams['_output_out']> | Observable<TParams['_output_out']>;
         inputParser?: ZodType<any>;
         outputParser?: ZodType<any>;
         middlewares: MiddlewareFunction<any, any>[];

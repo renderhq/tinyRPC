@@ -3,11 +3,12 @@ import { createTRPCProxyClient } from './proxy.js';
 
 export * from './proxy.js';
 export * from './links.js';
+export * from './observable.js';
+export { wsLink } from './links/ws.js';
 export * from './types.js';
 
 /**
  * @public
- * Standard entry point for creating a tRPC client in v10+.
  */
 export const createTRPCClient = <TRouter extends AnyRouter>(opts: {
     links: any[];
@@ -17,6 +18,5 @@ export const createTRPCClient = <TRouter extends AnyRouter>(opts: {
 
 /**
  * @public
- * Alias for creating a proxy client.
  */
 export { createTRPCProxyClient };

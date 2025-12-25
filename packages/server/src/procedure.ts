@@ -7,6 +7,8 @@ import type {
     MiddlewareFunction,
 } from './types.js';
 
+import { Observable } from './observable.js';
+
 /**
  * @internal
  */
@@ -100,7 +102,7 @@ export interface ProcedureBuilder<TParams extends ProcedureParams> {
         resolver: (opts: {
             ctx: TParams['_ctx_out'];
             input: TParams['_input_out'];
-        }) => TOutput | Promise<TOutput>
+        }) => Observable<TOutput>
     ): Procedure<{
         _config: TParams['_config'];
         _ctx_out: TParams['_ctx_out'];
@@ -180,8 +182,11 @@ function createProcedure<TParams extends ProcedureParams>(
             ...(def as any),
             procedure: true,
             type,
-            resolver: async (opts: any) => {
-                return resolver(opts);
+            resolver: (opts: any) => {
+                if (type === 'subscription') {
+                    return resolver(opts);
+                }
+                return Promise.resolve(resolver(opts));
             },
         },
     };

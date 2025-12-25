@@ -11,6 +11,8 @@ export * from './middleware.js';
 export * from './transformer.js';
 export * from './dispatch.js';
 export * from './errorUtils.js';
+export * from './observable.js';
+export * from './adapters/ws.js';
 
 /**
  * @internal
