@@ -2,6 +2,7 @@ import { TRPCError } from './errors.js';
 import { callProcedure } from './middleware.js';
 import type { Router, AnyProcedure, TRPCResponse } from './types.js';
 import { transformTRPCResponse, getHTTPStatusCode } from './errorUtils.js';
+import { getTransformer } from './transformer.js';
 
 /**
  * @internal
@@ -14,6 +15,7 @@ export async function resolveHTTPResponse(opts: {
     isBatch: boolean;
 }): Promise<{ body: TRPCResponse | TRPCResponse[]; status: number }> {
     const { router, path, ctx, input, isBatch } = opts;
+    const transformer = getTransformer(router._def.config?.transformer);
 
     const paths = isBatch ? path.split(',') : [path];
     const inputs = isBatch ? (Array.isArray(input) ? input : [input]) : [input];
@@ -21,9 +23,12 @@ export async function resolveHTTPResponse(opts: {
     const results = await Promise.all(
         paths.map(async (p, index) => {
             try {
-                const procedureInput = inputs[index];
+                const rawInput = inputs[index];
+                // Deserialize input
+                const procedureInput = transformer.input.deserialize(rawInput);
                 const data = await dispatch({ router, path: p, ctx, input: procedureInput });
-                return { result: { data } };
+                // Serialize data
+                return { result: { data: transformer.output.serialize(data) } };
             } catch (err: any) {
                 const trpcError =
                     err instanceof TRPCError
@@ -33,7 +38,11 @@ export async function resolveHTTPResponse(opts: {
                             message: err.message,
                             cause: err,
                         });
-                return transformTRPCResponse(trpcError, p);
+                const response = transformTRPCResponse(trpcError, p);
+                if ('error' in response && response.error.data) {
+                    response.error.data = transformer.output.serialize(response.error.data);
+                }
+                return response;
             }
         })
     );

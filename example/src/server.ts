@@ -1,10 +1,10 @@
-import { initTRPC, TRPCError, createHTTPHandler, applyWSHandler, observable } from '@tinyrpc/server';
+import { initTRPC, TRPCError, createHTTPHandler, applyWSHandler, observable, createCallerFactory } from '@tinyrpc/server';
 import { z } from 'zod';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import { EventEmitter } from 'events';
+import { auditLogMiddleware, rateLimitMiddleware } from '@tinyrpc/server';
 
-// Real-world Database setup
 interface Message {
     id: string;
     text: string;
@@ -19,7 +19,6 @@ interface User {
     role: 'ADMIN' | 'USER';
 }
 
-// Global event emitter for reactive updates
 const ee = new EventEmitter();
 
 const db = {
@@ -30,7 +29,6 @@ const db = {
     ]),
 };
 
-// Context
 export const createContext = async (opts: { req: http.IncomingMessage; res?: http.ServerResponse; ws?: any }) => {
     const sessionToken = opts.req.headers.authorization;
     const user = sessionToken ? db.users.get(sessionToken) : null;
@@ -43,49 +41,66 @@ export const createContext = async (opts: { req: http.IncomingMessage; res?: htt
 
 type Context = Awaited<ReturnType<typeof createContext>>;
 
-// tRPC Initialization
+/**
+ * Data transformer to support native Date objects over the wire.
+ */
+const transformer = {
+    serialize: (obj: any): any => {
+        if (obj instanceof Date) return { __type: 'Date', value: obj.toISOString() };
+        if (Array.isArray(obj)) return obj.map(v => transformer.serialize(v));
+        if (typeof obj === 'object' && obj !== null) {
+            const res: any = {};
+            for (const key in obj) res[key] = transformer.serialize(obj[key]);
+            return res;
+        }
+        return obj;
+    },
+    deserialize: (obj: any): any => {
+        if (obj && typeof obj === 'object' && obj.__type === 'Date') return new Date(obj.value);
+        if (Array.isArray(obj)) return obj.map(v => transformer.deserialize(v));
+        if (typeof obj === 'object' && obj !== null) {
+            const res: any = {};
+            for (const key in obj) res[key] = transformer.deserialize(obj[key]);
+            return res;
+        }
+        return obj;
+    }
+};
+
 const t = initTRPC.create<{
     ctx: Context;
     meta: { requiredRole?: 'ADMIN' | 'USER' };
     errorShape: any;
     transformer: any;
-}>();
-
-import { auditLogMiddleware, rateLimitMiddleware } from '@tinyrpc/server';
+}>({ transformer: transformer as any });
 
 // Middlewares
-const loggerMiddleware = t.middleware(auditLogMiddleware());
-
-const rateLimit = t.middleware(rateLimitMiddleware({
-    limit: 50,
-    windowMs: 60 * 1000,
-}));
+const logger = t.middleware(auditLogMiddleware());
+const rateLimit = t.middleware(rateLimitMiddleware({ limit: 100, windowMs: 60 * 1000 }));
 
 const isAuthed = t.middleware(({ ctx, next, meta }) => {
-    const user = ctx.user;
-    if (!user) {
+    if (!ctx.user) {
         throw new TRPCError({
             code: 'UNAUTHORIZED',
-            message: 'Authentication required. Pass "token_alice" or "token_bob" in Authorization header.',
+            message: 'Pass "token_alice" or "token_bob" in Authorization header.',
         });
     }
 
-    if (meta?.requiredRole && user.role !== meta.requiredRole) {
+    if (meta?.requiredRole && ctx.user.role !== meta.requiredRole) {
         throw new TRPCError({
             code: 'FORBIDDEN',
-            message: `Restricted to ${meta.requiredRole}. Your role: ${user.role}`,
+            message: `Requires ${meta.requiredRole} role.`,
         });
     }
 
     return next({
-        ctx: { user },
+        ctx: { user: ctx.user },
     });
 });
 
-const publicProcedure = t.procedure.use(loggerMiddleware);
+const publicProcedure = t.procedure.use(logger);
 const protectedProcedure = publicProcedure.use(rateLimit).use(isAuthed);
 
-// Routers
 const chatRouter = t.router({
     sendMessage: protectedProcedure
         .input(z.object({
@@ -101,10 +116,24 @@ const chatRouter = t.router({
                 roomId: input.roomId,
             };
             db.messages.push(message);
-
             ee.emit('newMessage', message);
-
             return message;
+        }),
+
+    getInfiniteMessages: publicProcedure
+        .input(z.object({
+            limit: z.number().min(1).max(100).default(10),
+            cursor: z.string().nullish(),
+        }))
+        .query(({ input }) => {
+            const { limit, cursor } = input;
+            const items = db.messages.filter(m => !cursor || m.id < cursor).slice(-limit);
+            const nextCursor = items.length > 0 ? items[0]!.id : null;
+
+            return {
+                items,
+                nextCursor,
+            };
         }),
 
     uploadFile: protectedProcedure
@@ -113,115 +142,59 @@ const chatRouter = t.router({
             base64: z.string(),
         }))
         .mutation(({ input }) => {
-            console.log(`[storage] received file: ${input.filename} (${input.base64.length} bytes)`);
+            console.log(`[File] Uploading ${input.filename} (${input.base64.length} bytes)`);
             return {
-                url: `https://fake-storage.com/${input.filename}`,
+                url: `https://cdn.example.com/uploads/${input.filename}`,
+                size: input.base64.length,
             };
         }),
 
-    getMessages: publicProcedure
-        .input(z.object({ roomId: z.string().default('general') }))
-        .query(({ input }) => {
-            return db.messages
-                .filter(m => m.roomId === input.roomId)
-                .slice(-50);
-        }),
-
-    getInfiniteMessages: publicProcedure
-        .input(z.object({
-            roomId: z.string().default('general'),
-            limit: z.number().min(1).max(100).default(10),
-            cursor: z.string().nullish(), // message ID
-        }))
-        .query(({ input }) => {
-            const { roomId, limit, cursor } = input;
-            const roomMessages = db.messages.filter(m => m.roomId === roomId);
-
-            let items = roomMessages;
-            if (cursor) {
-                const cursorIndex = roomMessages.findIndex(m => m.id === cursor);
-                if (cursorIndex !== -1) {
-                    items = roomMessages.slice(0, cursorIndex);
-                }
-            }
-
-            const nextMessages = items.slice(-(limit || 10));
-            const nextCursor = nextMessages.length > 0 ? nextMessages[0]!.id : null;
-
-            return {
-                items: nextMessages,
-                nextCursor,
-            };
-        }),
-
-    onMessage: publicProcedure
-        .input(z.object({ roomId: z.string().default('general') }))
+    onMessage: t.procedure
+        .input(z.object({ roomId: z.string() }))
         .subscription(({ input }) => {
-            return observable<Message>((observer) => {
-                const handler = (message: Message) => {
-                    if (message.roomId === input.roomId) {
-                        observer.next(message);
+            return observable<Message>((emit) => {
+                const onMessage = (msg: Message) => {
+                    if (msg.roomId === input.roomId) {
+                        emit.next(msg);
                     }
                 };
-
-                ee.on('newMessage', handler);
-                return () => {
-                    ee.off('newMessage', handler);
-                };
+                ee.on('newMessage', onMessage);
+                return () => ee.off('newMessage', onMessage);
             });
         }),
 });
 
-const adminRouter = t.router({
-    clearChat: protectedProcedure
-        .meta({ requiredRole: 'ADMIN' })
-        .mutation(() => {
-            db.messages = [];
-            return { success: true };
-        }),
-});
-
 export const appRouter = t.router({
-    health: publicProcedure.query(() => ({ ok: true, uptime: process.uptime() })),
     chat: chatRouter,
-    admin: adminRouter,
+    ping: t.procedure.query(() => 'pong'),
 });
 
 export type AppRouter = typeof appRouter;
 
-// Server Setup
-const handler = createHTTPHandler({
+const PORT = 3000;
+const server = http.createServer(createHTTPHandler({
     router: appRouter,
-    createContext: (req, res) => createContext({ req, res }),
-});
-
-const server = http.createServer((req, res) => {
-    if (req.method === 'POST') {
-        let body = '';
-        req.on('data', (chunk) => (body += chunk));
-        req.on('end', () => {
-            try {
-                (req as any).body = body ? JSON.parse(body) : {};
-            } catch {
-                (req as any).body = {};
-            }
-            handler(req, res);
-        });
-    } else {
-        handler(req, res);
-    }
-});
+    createContext,
+    cors: true,
+}));
 
 const wss = new WebSocketServer({ server });
+applyWSHandler({ wss, router: appRouter, createContext });
 
-applyWSHandler({
-    wss,
-    router: appRouter,
-    createContext: (opts) => createContext({ req: opts.req, ws: opts.ws }),
-});
-
-const PORT = 3000;
 server.listen(PORT, () => {
-    console.log(`tinyRPC Server listening on port ${PORT}`);
-    console.log(`WebSocket server ready for subscriptions`);
+    console.log(`\x1b[32m[tinyRPC]\x1b[0m Server running at http://localhost:${PORT}`);
+
+    // Internal caller simulation
+    const createCaller = createCallerFactory(appRouter);
+    const system = createCaller({
+        user: { id: 'system', name: 'System', role: 'ADMIN' },
+        db,
+    });
+
+    setTimeout(async () => {
+        await system.chat.sendMessage.mutate({
+            text: 'System checking in: Internal procedures working.',
+            roomId: 'general'
+        });
+    }, 1000);
 });

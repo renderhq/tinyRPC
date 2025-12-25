@@ -1,7 +1,7 @@
 import { createProcedureBuilder } from './procedure.js';
 import { createRouter, mergeRouters } from './router.js';
 import { TRPCError } from './errors.js';
-import type { AnyRootConfig, MiddlewareFunction, ProcedureParams } from './types.js';
+import type { AnyRootConfig, MiddlewareFunction, ProcedureParams, Router } from './types.js';
 
 export * from './types.js';
 export * from './errors.js';
@@ -13,12 +13,16 @@ export * from './dispatch.js';
 export * from './errorUtils.js';
 export * from './observable.js';
 export * from './adapters/ws.js';
+export * from './adapters/fetch.js';
 export * from './middlewares/index.js';
+export * from './caller.js';
 
 /**
  * @internal
  */
 class TRPCBuilder<TConfig extends AnyRootConfig> {
+    constructor(public _config: TConfig) { }
+
     /**
      * Create a new procedure builder.
      */
@@ -29,7 +33,13 @@ class TRPCBuilder<TConfig extends AnyRootConfig> {
     /**
      * Create a new router.
      */
-    public router = createRouter;
+    public router = <TProcedures extends Record<string, any>>(
+        procedures: TProcedures
+    ): Router<TConfig> & TProcedures => {
+        const router = createRouter(procedures);
+        router._def.config = this._config;
+        return router as any;
+    };
 
     /**
      * Merge existing routers.
@@ -79,7 +89,17 @@ export const initTRPC = {
             errorShape: any;
             transformer: any;
         }
-    >() => new TRPCBuilder<TConfig>(),
+    >(opts?: {
+        transformer?: TConfig['transformer'];
+        errorShape?: TConfig['errorShape'];
+    }) => {
+        const config: TConfig = {
+            ctx: {} as any,
+            meta: {} as any,
+            ...opts,
+        } as any;
+        return new TRPCBuilder<TConfig>(config);
+    },
 };
 
 export { TRPCError };
