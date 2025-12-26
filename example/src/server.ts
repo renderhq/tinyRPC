@@ -79,14 +79,15 @@ const logger = t.middleware(auditLogMiddleware());
 const rateLimit = t.middleware(rateLimitMiddleware({ limit: 100, windowMs: 60 * 1000 }));
 
 const isAuthed = t.middleware(({ ctx, next, meta }) => {
-    if (!ctx.user) {
+    const user = ctx.user;
+    if (!user) {
         throw new TRPCError({
             code: 'UNAUTHORIZED',
             message: 'Pass "token_alice" or "token_bob" in Authorization header.',
         });
     }
 
-    if (meta?.requiredRole && ctx.user.role !== meta.requiredRole) {
+    if (meta?.requiredRole && user.role !== meta.requiredRole) {
         throw new TRPCError({
             code: 'FORBIDDEN',
             message: `Requires ${meta.requiredRole} role.`,
@@ -94,7 +95,7 @@ const isAuthed = t.middleware(({ ctx, next, meta }) => {
     }
 
     return next({
-        ctx: { user: ctx.user },
+        ctx: { user },
     });
 });
 
@@ -111,7 +112,7 @@ const chatRouter = t.router({
             const message: Message = {
                 id: Math.random().toString(36).substring(7),
                 text: input.text,
-                author: ctx.user.name,
+                author: ctx.user!.name,
                 timestamp: new Date(),
                 roomId: input.roomId,
             };
@@ -126,7 +127,8 @@ const chatRouter = t.router({
             cursor: z.string().nullish(),
         }))
         .query(({ input }) => {
-            const { limit, cursor } = input;
+            const limit = input.limit ?? 10;
+            const cursor = input.cursor;
             const items = db.messages.filter(m => !cursor || m.id < cursor).slice(-limit);
             const nextCursor = items.length > 0 ? items[0]!.id : null;
 

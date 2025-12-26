@@ -83,4 +83,4 @@ We are approaching **v1.0**. Our focus is on:
 - **Standardization**: Stable API for custom links and adapters.
 - **Observability**: Built-in OpenTelemetry support.
 
-See [V2 Proposal](.github/ISSUE_V2_PROPOSAL.md) for future architectural plans.
+See [V3 Production Ready](.github/ISSUE_V3_PRODUCTION_READY.md) for future architectural plans.

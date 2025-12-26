@@ -27,7 +27,19 @@ export function createWSHandler(opts: {
         const subscriptions = new Map<string | number, Unsubscribable>();
 
         ws.on('message', async (data) => {
-            const msg: WSMessage = JSON.parse(data.toString());
+            let msg: WSMessage;
+            try {
+                msg = JSON.parse(data.toString());
+            } catch (err) {
+                ws.send(JSON.stringify({
+                    id: null,
+                    error: {
+                        message: 'Invalid JSON',
+                        code: -32700, // Parse error
+                    }
+                }));
+                return;
+            }
             const { id, method, params } = msg;
 
             if (method === 'subscription.stop') {

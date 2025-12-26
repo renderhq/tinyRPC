@@ -6,6 +6,7 @@ export * from './links.js';
 export * from './observable.js';
 export { wsLink } from './links/ws.js';
 export { dedupeLink } from './links/dedupe.js';
+export { retryLink } from './links/retry.js';
 export * from './types.js';
 
 /**

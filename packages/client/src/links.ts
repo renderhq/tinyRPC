@@ -9,6 +9,7 @@ export interface Operation {
     input: any;
     id: number;
     context?: any;
+    signal?: AbortSignal;
 }
 
 /**
@@ -82,6 +83,7 @@ export function httpLink(opts: HTTPLinkOptions): TRPCLink {
                 ...headers,
             },
             ...(body ? { body } : {}),
+            signal: op.signal ?? null,
         });
 
         return res.json();
@@ -101,33 +103,51 @@ export function httpBatchLink(opts: HTTPLinkOptions & { maxBatchSize?: number })
 
             if (!timer) {
                 timer = setTimeout(async () => {
-                    const currentBatch = [...batch];
+                    const fullBatch = [...batch];
                     batch = [];
                     timer = null;
 
-                    const paths = currentBatch.map(b => b.op.path).join(',');
-                    const inputs = currentBatch.map(b => b.op.input);
+                    const maxBatchSize = opts.maxBatchSize ?? Infinity;
+                    const chunks: typeof fullBatch[] = [];
 
-                    const url = `${opts.url}/${paths}?batch=true&input=${encodeURIComponent(JSON.stringify(inputs))}`;
-
-                    try {
-                        const headers = await getHeaders(opts);
-                        const res = await fetch(url, {
-                            headers: {
-                                'Content-Type': 'application/json',
-                                ...headers,
-                            },
-                        });
-                        const json = await res.json();
-
-                        if (Array.isArray(json)) {
-                            currentBatch.forEach((b, i) => b.resolve(json[i]));
-                        } else {
-                            currentBatch.forEach(b => b.resolve(json));
-                        }
-                    } catch (err) {
-                        currentBatch.forEach(b => b.reject(err));
+                    for (let i = 0; i < fullBatch.length; i += maxBatchSize) {
+                        chunks.push(fullBatch.slice(i, i + maxBatchSize));
                     }
+
+                    await Promise.all(chunks.map(async (currentBatch) => {
+                        const paths = currentBatch.map(b => b.op.path).join(',');
+                        const inputs = currentBatch.map(b => b.op.input);
+
+                        // If any op is a mutation, we should use POST
+                        const hasMutation = currentBatch.some(b => b.op.type === 'mutation');
+                        const method = hasMutation ? 'POST' : 'GET';
+
+                        const url = method === 'GET'
+                            ? `${opts.url}/${paths}?batch=true&input=${encodeURIComponent(JSON.stringify(inputs))}`
+                            : `${opts.url}/${paths}?batch=true`;
+
+                        try {
+                            const headers = await getHeaders(opts);
+                            const res = await fetch(url, {
+                                method,
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...headers,
+                                },
+                                body: method === 'POST' ? JSON.stringify(inputs) : null,
+                                signal: currentBatch[0]?.op.signal ?? null,
+                            });
+                            const json = await res.json();
+
+                            if (Array.isArray(json)) {
+                                currentBatch.forEach((b, i) => b.resolve(json[i]));
+                            } else {
+                                currentBatch.forEach(b => b.resolve(json));
+                            }
+                        } catch (err) {
+                            currentBatch.forEach(b => b.reject(err));
+                        }
+                    }));
                 }, 0);
             }
         });

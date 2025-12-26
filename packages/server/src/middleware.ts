@@ -14,7 +14,7 @@ export async function callProcedure(opts: {
     type: ProcedureType;
 }): Promise<any> {
     const { procedure, ctx, input: rawInput, path, type } = opts;
-    const { middlewares, resolver, inputParser, meta } = procedure._def;
+    const { middlewares, resolver, inputParser, outputParser, meta } = procedure._def;
 
     // 1. Input Validation (tRPC internal style)
     let validatedInput = rawInput;
@@ -41,7 +41,21 @@ export async function callProcedure(opts: {
         // End of chain reached, execute the actual resolver
         if (index === middlewares.length) {
             try {
-                const data = await resolver({ ctx: currentCtx, input: validatedInput });
+                let data = await resolver({ ctx: currentCtx, input: validatedInput });
+
+                // 2. Output Validation
+                if (outputParser && typeof outputParser.parse === 'function') {
+                    try {
+                        data = outputParser.parse(data);
+                    } catch (cause: any) {
+                        throw new TRPCError({
+                            code: 'INTERNAL_SERVER_ERROR',
+                            message: 'Output validation failed',
+                            cause,
+                        });
+                    }
+                }
+
                 return { ok: true, data, ctx: currentCtx };
             } catch (err: any) {
                 return {
