@@ -13,22 +13,28 @@ export async function resolveHTTPResponse(opts: {
     ctx: any;
     input: any;
     isBatch: boolean;
-}): Promise<{ body: TRPCResponse | TRPCResponse[]; status: number }> {
+}): Promise<{ body: TRPCResponse | TRPCResponse[]; status: number; headers?: Record<string, string> }> {
     const { router, path, ctx, input, isBatch } = opts;
     const transformer = getTransformer(router._def.config?.transformer);
 
     const paths = isBatch ? path.split(',') : [path];
     const inputs = isBatch ? (Array.isArray(input) ? input : [input]) : [input];
 
+    const allMetrics: any[] = [];
     const results = await Promise.all(
         paths.map(async (p, index) => {
             try {
                 const rawInput = inputs[index];
                 // Deserialize input
                 const procedureInput = transformer.input.deserialize(rawInput);
-                const data = await dispatch({ router, path: p, ctx, input: procedureInput });
+                const result = await dispatch({ router, path: p, ctx, input: procedureInput });
+
+                if (result._metrics) {
+                    allMetrics.push({ path: p, ...result._metrics });
+                }
+
                 // Serialize data
-                return { result: { data: transformer.output.serialize(data) } };
+                return { result: { data: transformer.output.serialize(result.data) } };
             } catch (err: any) {
                 const trpcError =
                     err instanceof TRPCError
@@ -38,6 +44,11 @@ export async function resolveHTTPResponse(opts: {
                             message: err.message,
                             cause: err,
                         });
+
+                if ((trpcError as any)._metrics) {
+                    allMetrics.push({ path: p, ...(trpcError as any)._metrics });
+                }
+
                 const response = transformTRPCResponse(trpcError, p);
                 if ('error' in response && response.error.data) {
                     response.error.data = transformer.output.serialize(response.error.data);
@@ -51,6 +62,9 @@ export async function resolveHTTPResponse(opts: {
     return {
         body: result,
         status: isBatch ? 200 : ('error' in result ? result.error.data?.httpStatus ?? 500 : 200),
+        headers: allMetrics.length > 0 ? {
+            'X-TinyRPC-Trace': JSON.stringify(isBatch ? allMetrics : allMetrics[0])
+        } : undefined as any
     };
 }
 
@@ -166,7 +180,7 @@ export function createHTTPHandler(opts: {
 
         try {
             const ctx = await createContext(req, res);
-            const { body, status } = await resolveHTTPResponse({
+            const { body, status, headers } = await resolveHTTPResponse({
                 router,
                 path,
                 ctx,
@@ -176,6 +190,11 @@ export function createHTTPHandler(opts: {
 
             res.statusCode = status;
             res.setHeader('Content-Type', 'application/json');
+            if (headers) {
+                for (const [key, value] of Object.entries(headers)) {
+                    res.setHeader(key, value);
+                }
+            }
             res.end(JSON.stringify(body));
         } catch (err: any) {
             const trpcError = err instanceof TRPCError ? err : new TRPCError({

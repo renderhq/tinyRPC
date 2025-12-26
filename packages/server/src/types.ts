@@ -8,6 +8,17 @@ export type MaybePromise<T> = T | Promise<T>;
 /**
  * @internal
  */
+export interface ProcedureMetrics {
+    durationMs: number;
+    steps: {
+        name: string;
+        durationMs: number;
+    }[];
+}
+
+/**
+ * @internal
+ */
 export interface AnyRootConfig {
     ctx: any;
     meta: any;
@@ -72,6 +83,10 @@ export interface MiddlewareResult<TParams extends ProcedureParams> {
     readonly data?: unknown;
     readonly ctx?: TParams['_ctx_out'];
     readonly error?: TRPCError;
+    /**
+     * @internal
+     */
+    readonly _metrics?: ProcedureMetrics;
 }
 
 /**

@@ -16,11 +16,16 @@ export async function callProcedure(opts: {
     const { procedure, ctx, input: rawInput, path, type } = opts;
     const { middlewares, resolver, inputParser, outputParser, meta } = procedure._def;
 
+    const steps: { name: string; durationMs: number }[] = [];
+    const totalStart = performance.now();
+
     // 1. Input Validation (tRPC internal style)
     let validatedInput = rawInput;
     if (inputParser && typeof inputParser.parse === 'function') {
+        const start = performance.now();
         try {
             validatedInput = inputParser.parse(rawInput);
+            steps.push({ name: 'input-validation', durationMs: performance.now() - start });
         } catch (cause: any) {
             throw new TRPCError({
                 code: 'BAD_REQUEST',
@@ -40,13 +45,16 @@ export async function callProcedure(opts: {
     ): Promise<MiddlewareResult<any>> => {
         // End of chain reached, execute the actual resolver
         if (index === middlewares.length) {
+            const start = performance.now();
             try {
                 let data = await resolver({ ctx: currentCtx, input: validatedInput });
 
                 // 2. Output Validation
                 if (outputParser && typeof outputParser.parse === 'function') {
+                    const outputStart = performance.now();
                     try {
                         data = outputParser.parse(data);
+                        steps.push({ name: 'output-validation', durationMs: performance.now() - outputStart });
                     } catch (cause: any) {
                         throw new TRPCError({
                             code: 'INTERNAL_SERVER_ERROR',
@@ -56,6 +64,7 @@ export async function callProcedure(opts: {
                     }
                 }
 
+                steps.push({ name: 'resolver', durationMs: performance.now() - start });
                 return { ok: true, data, ctx: currentCtx };
             } catch (err: any) {
                 return {
@@ -73,6 +82,7 @@ export async function callProcedure(opts: {
         }
 
         const mw = middlewares[index]!;
+        const mwStart = performance.now();
 
         /**
          * Provide the 'next' function to the middleware.
@@ -87,7 +97,7 @@ export async function callProcedure(opts: {
         };
 
         try {
-            return await mw({
+            const result = await mw({
                 ctx: currentCtx,
                 input: validatedInput,
                 meta,
@@ -96,6 +106,8 @@ export async function callProcedure(opts: {
                 rawInput,
                 next: next as any,
             });
+            steps.push({ name: `middleware-${index}`, durationMs: performance.now() - mwStart });
+            return result;
         } catch (err: any) {
             return {
                 ok: false,
@@ -114,10 +126,21 @@ export async function callProcedure(opts: {
     // Start the middleware chain
     const result = await runner(0, ctx);
 
+    const metrics = {
+        durationMs: performance.now() - totalStart,
+        steps,
+    };
+
     // tRPC internal result handling
     if (!result.ok) {
-        throw result.error;
+        const error = result.error!;
+        (error as any)._metrics = metrics;
+        throw error;
     }
 
-    return result.data;
+    // Attach metrics secretly to the returned data if it's an object,
+    // though it's better to return it as part of the structure in dispatch.ts
+    (result as any)._metrics = metrics;
+
+    return result;
 }

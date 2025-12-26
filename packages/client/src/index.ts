@@ -7,6 +7,8 @@ export * from './observable.js';
 export { wsLink } from './links/ws.js';
 export { dedupeLink } from './links/dedupe.js';
 export { retryLink } from './links/retry.js';
+export { loggerLink } from './links/logger.js';
+export { cacheLink } from './links/cache.js';
 export * from './types.js';
 
 /**
