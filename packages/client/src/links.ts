@@ -118,16 +118,24 @@ export function httpBatchLink(opts: HTTPLinkOptions & { maxBatchSize?: number })
                         const paths = currentBatch.map(b => b.op.path).join(',');
                         const inputs = currentBatch.map(b => b.op.input);
 
-                        const url = `${opts.url}/${paths}?batch=true&input=${encodeURIComponent(JSON.stringify(inputs))}`;
+                        // If any op is a mutation, we should use POST
+                        const hasMutation = currentBatch.some(b => b.op.type === 'mutation');
+                        const method = hasMutation ? 'POST' : 'GET';
+
+                        const url = method === 'GET'
+                            ? `${opts.url}/${paths}?batch=true&input=${encodeURIComponent(JSON.stringify(inputs))}`
+                            : `${opts.url}/${paths}?batch=true`;
 
                         try {
                             const headers = await getHeaders(opts);
                             const res = await fetch(url, {
+                                method,
                                 headers: {
                                     'Content-Type': 'application/json',
                                     ...headers,
                                 },
-                                signal: currentBatch[0]?.op.signal ?? null, // Simplified: use first signal in batch
+                                body: method === 'POST' ? JSON.stringify(inputs) : null,
+                                signal: currentBatch[0]?.op.signal ?? null,
                             });
                             const json = await res.json();
 

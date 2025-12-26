@@ -147,7 +147,21 @@ export function createHTTPHandler(opts: {
                 input = {};
             }
         } else {
-            input = req.body ?? {};
+            if (req.body) {
+                input = req.body;
+            } else {
+                // Read body from stream
+                const buffers = [];
+                for await (const chunk of req) {
+                    buffers.push(chunk);
+                }
+                const bodyString = Buffer.concat(buffers).toString();
+                try {
+                    input = bodyString ? JSON.parse(bodyString) : {};
+                } catch {
+                    input = {};
+                }
+            }
         }
 
         try {
