@@ -56,7 +56,8 @@ export function createTRPCProxyClient<TRouter extends AnyRouter>(opts: {
                             return transformed;
                         }
 
-                        return chain.then((res: any) => {
+                        return chain.then((envelope: any) => {
+                            const res = envelope.result;
                             if (res.error) {
                                 if (res.error.data && transformer.output.deserialize) {
                                     res.error.data = transformer.output.deserialize(res.error.data);

@@ -169,6 +169,11 @@ const chatRouter = t.router({
 export const appRouter = t.router({
     chat: chatRouter,
     ping: t.procedure.query(() => 'pong'),
+    slowQuery: publicProcedure.query(async () => {
+        // Simulate database latency
+        await new Promise(r => setTimeout(r, 500));
+        return { message: 'This was slow but traced!' };
+    }),
 });
 
 export type AppRouter = typeof appRouter;

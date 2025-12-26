@@ -86,7 +86,13 @@ export function httpLink(opts: HTTPLinkOptions): TRPCLink {
             signal: op.signal ?? null,
         });
 
-        return res.json();
+        const json = await res.json();
+        const traceHeader = res.headers.get('X-TinyRPC-Trace');
+
+        return {
+            result: json,
+            trace: traceHeader ? JSON.parse(traceHeader) : undefined,
+        };
     };
 }
 
@@ -138,11 +144,19 @@ export function httpBatchLink(opts: HTTPLinkOptions & { maxBatchSize?: number })
                                 signal: currentBatch[0]?.op.signal ?? null,
                             });
                             const json = await res.json();
+                            const traceHeader = res.headers.get('X-TinyRPC-Trace');
+                            const trace = traceHeader ? JSON.parse(traceHeader) : undefined;
 
                             if (Array.isArray(json)) {
-                                currentBatch.forEach((b, i) => b.resolve(json[i]));
+                                currentBatch.forEach((b, i) => b.resolve({
+                                    result: json[i],
+                                    trace: Array.isArray(trace) ? trace[i] : trace,
+                                }));
                             } else {
-                                currentBatch.forEach(b => b.resolve(json));
+                                currentBatch.forEach(b => b.resolve({
+                                    result: json,
+                                    trace,
+                                }));
                             }
                         } catch (err) {
                             currentBatch.forEach(b => b.reject(err));

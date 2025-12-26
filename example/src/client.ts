@@ -1,8 +1,15 @@
-import { createTRPCProxyClient, httpBatchLink, wsLink, dedupeLink } from '@tinyrpc/client';
+import {
+    createTRPCProxyClient,
+    httpBatchLink,
+    wsLink,
+    dedupeLink,
+    cacheLink,
+    loggerLink
+} from '@tinyrpc/client';
 import type { AppRouter } from './server.js';
 
 async function main() {
-    console.log('\x1b[36m--- starting tinyRPC production-ready demo ---\x1b[0m');
+    console.log('\x1b[36m--- starting tinyRPC Intelligent Link Layer demo ---\x1b[0m');
 
     const transformer = {
         serialize: (obj: any): any => {
@@ -30,7 +37,9 @@ async function main() {
     const alice = createTRPCProxyClient<AppRouter>({
         transformer,
         links: [
+            cacheLink({ ttl: 5000 }), // SWR Cache
             dedupeLink(),
+            loggerLink(), // Trace Logger
             wsLink({
                 url: 'ws://localhost:3000',
                 headers: () => ({ Authorization: 'token_alice' }),
@@ -41,6 +50,9 @@ async function main() {
     const bob = createTRPCProxyClient<AppRouter>({
         transformer,
         links: [
+            cacheLink({ ttl: 5000 }),
+            dedupeLink(),
+            loggerLink(),
             httpBatchLink({
                 url: 'http://localhost:3000/trpc',
                 headers: () => ({ Authorization: 'token_bob' }),
@@ -87,6 +99,17 @@ async function main() {
     } catch (e: any) {
         console.log(`\x1b[31m[Expected Error]\x1b[0m ${e.message || 'Rate limit exceeded'}`);
     }
+
+    // 6. SWR Cache & Tracing Demo
+    console.log('\n[SWR Demo] First call to slowQuery (expected ~500ms)...');
+    const start1 = Date.now();
+    await bob.slowQuery.query();
+    console.log(`[SWR Demo] Done in ${Date.now() - start1}ms`);
+
+    console.log('\n[SWR Demo] Second call to slowQuery (expected < 5ms - Cached!)');
+    const start2 = Date.now();
+    await bob.slowQuery.query();
+    console.log(`[SWR Demo] Done in ${Date.now() - start2}ms`);
 
     console.log('\n\x1b[32mDemo finished successfully.\x1b[0m');
     process.exit(0);

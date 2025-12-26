@@ -37,7 +37,7 @@ export async function fetchRequestHandler<TRouter extends Router<any>>(opts: {
 
         const ctx = createContext ? await createContext({ req }) : {};
 
-        const { body, status } = await resolveHTTPResponse({
+        const { body, status, headers } = await resolveHTTPResponse({
             router,
             path,
             ctx,
@@ -47,7 +47,10 @@ export async function fetchRequestHandler<TRouter extends Router<any>>(opts: {
 
         return new Response(JSON.stringify(body), {
             status,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...headers,
+            },
         });
     } catch (err: any) {
         const error = err instanceof TRPCError ? err : new TRPCError({
