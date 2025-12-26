@@ -33,9 +33,10 @@ export function createTRPCProxyClient<TRouter extends AnyRouter>(opts: {
 
                         const op = {
                             path: path.join('.'),
-                            type,
+                            type: type as 'query' | 'mutation' | 'subscription',
                             input: serializedInput,
                             id: ++idCounter,
+                            signal: clientOpts?.signal,
                         };
 
                         const chain = executeLinkChain({ links, op });
