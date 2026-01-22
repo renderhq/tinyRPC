@@ -30,7 +30,9 @@ const db = {
 };
 
 export const createContext = async (opts: { req: http.IncomingMessage; res?: http.ServerResponse; ws?: any }) => {
-    const sessionToken = opts.req.headers.authorization;
+    console.log('[Context] opts:', { hasReq: !!opts.req, hasRes: !!opts.res, hasWs: !!opts.ws });
+    console.log('[Context] req headers:', opts.req?.headers);
+    const sessionToken = opts.req?.headers?.authorization;
     const user = sessionToken ? db.users.get(sessionToken) : null;
 
     return {

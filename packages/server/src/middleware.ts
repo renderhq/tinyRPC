@@ -21,7 +21,19 @@ export async function callProcedure(opts: {
 
     // 1. Input Validation (tRPC internal style)
     let validatedInput = rawInput;
-    if (inputParser && typeof inputParser.parse === 'function') {
+    if (inputParser && typeof inputParser.parseAsync === 'function') {
+        const start = performance.now();
+        try {
+            validatedInput = await inputParser.parseAsync(rawInput);
+            steps.push({ name: 'input-validation', durationMs: performance.now() - start });
+        } catch (cause: any) {
+            throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: cause?.issues ? cause.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`).join(', ') : 'Input validation failed',
+                cause,
+            });
+        }
+    } else if (inputParser && typeof inputParser.parse === 'function') {
         const start = performance.now();
         try {
             validatedInput = inputParser.parse(rawInput);
@@ -29,7 +41,7 @@ export async function callProcedure(opts: {
         } catch (cause: any) {
             throw new TRPCError({
                 code: 'BAD_REQUEST',
-                message: 'Input validation failed',
+                message: cause?.issues ? cause.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`).join(', ') : 'Input validation failed',
                 cause,
             });
         }
@@ -50,7 +62,19 @@ export async function callProcedure(opts: {
                 let data = await resolver({ ctx: currentCtx, input: validatedInput });
 
                 // 2. Output Validation
-                if (outputParser && typeof outputParser.parse === 'function') {
+                if (outputParser && typeof outputParser.parseAsync === 'function') {
+                    const outputStart = performance.now();
+                    try {
+                        data = await outputParser.parseAsync(data);
+                        steps.push({ name: 'output-validation', durationMs: performance.now() - outputStart });
+                    } catch (cause: any) {
+                        throw new TRPCError({
+                            code: 'INTERNAL_SERVER_ERROR',
+                            message: cause?.issues ? cause.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`).join(', ') : 'Output validation failed',
+                            cause,
+                        });
+                    }
+                } else if (outputParser && typeof outputParser.parse === 'function') {
                     const outputStart = performance.now();
                     try {
                         data = outputParser.parse(data);
@@ -58,7 +82,7 @@ export async function callProcedure(opts: {
                     } catch (cause: any) {
                         throw new TRPCError({
                             code: 'INTERNAL_SERVER_ERROR',
-                            message: 'Output validation failed',
+                            message: cause?.issues ? cause.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`).join(', ') : 'Output validation failed',
                             cause,
                         });
                     }

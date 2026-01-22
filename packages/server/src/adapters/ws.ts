@@ -80,7 +80,11 @@ export function createWSHandler(opts: {
                         type: 'subscription',
                     });
 
-                    const sub = observable.subscribe({
+                    if (!observable.ok) {
+                        throw observable.error;
+                    }
+
+                    const sub = observable.data.subscribe({
                         next: (data: any) => {
                             ws.send(JSON.stringify({
                                 id,
@@ -116,7 +120,7 @@ export function createWSHandler(opts: {
 
                     subscriptions.set(id, sub);
                 } else {
-                    const data = await callProcedure({
+                    const result = await callProcedure({
                         procedure,
                         ctx,
                         input: procedureInput,
@@ -124,11 +128,15 @@ export function createWSHandler(opts: {
                         type: method as any,
                     });
 
+                    if (!result.ok) {
+                        throw result.error;
+                    }
+
                     ws.send(JSON.stringify({
                         id,
                         result: {
                             type: 'data',
-                            data: transformer.output.serialize(data),
+                            data: transformer.output.serialize(result.data),
                         },
                     }));
                 }

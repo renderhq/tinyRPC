@@ -2,6 +2,7 @@ import type { TRPCLink } from './links.js';
 import { executeLinkChain } from './links.js';
 import type { AnyRouter } from '@tinyrpc/server';
 import type { TRPCProxyClient } from './types.js';
+import { map } from './observable.js';
 
 let idCounter = 0;
 
@@ -42,9 +43,9 @@ export function createTRPCProxyClient<TRouter extends AnyRouter>(opts: {
                         const chain = executeLinkChain({ links, op });
 
                         if (prop === 'subscribe') {
-                            const transformed = chain.map((data: any) =>
+                            const transformed = chain.pipe(map((data: any) =>
                                 transformer.output.deserialize ? transformer.output.deserialize(data) : data
-                            );
+                            ));
 
                             if (clientOpts && (clientOpts.onData || clientOpts.onError || clientOpts.onComplete)) {
                                 transformed.subscribe({
