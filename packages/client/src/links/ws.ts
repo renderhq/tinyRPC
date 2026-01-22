@@ -57,7 +57,13 @@ export function wsLink(opts: WSLinkOptions): TRPCLink {
                     if (error) {
                         pending.reject({ error });
                     } else {
-                        pending.resolve({ result });
+                        pending.resolve({
+                            result: {
+                                result: {
+                                    data: result.data
+                                }
+                            }
+                        });
                     }
                     pendingRequests.delete(id);
                 }
@@ -83,18 +89,22 @@ export function wsLink(opts: WSLinkOptions): TRPCLink {
                 activeSubscriptions.set(op.id, observer);
 
                 const send = async () => {
-                    const socket = await connect();
-                    if (socket.readyState === 1) {
-                        socket.send(JSON.stringify({
-                            id: op.id,
-                            method: 'subscription',
-                            params: {
-                                path: op.path,
-                                input: op.input,
-                            },
-                        }));
-                    } else {
-                        setTimeout(send, 10);
+                    try {
+                        const socket = await connect();
+                        if (socket.readyState === 1) {
+                            socket.send(JSON.stringify({
+                                id: op.id,
+                                method: 'subscription',
+                                params: {
+                                    path: op.path,
+                                    input: op.input,
+                                },
+                            }));
+                        } else {
+                            setTimeout(send, 10);
+                        }
+                    } catch (err) {
+                        observer.error(err);
                     }
                 };
                 send();
@@ -115,18 +125,23 @@ export function wsLink(opts: WSLinkOptions): TRPCLink {
             pendingRequests.set(op.id, { resolve, reject, op });
 
             const send = async () => {
-                const socket = await connect();
-                if (socket.readyState === 1) {
-                    socket.send(JSON.stringify({
-                        id: op.id,
-                        method: op.type,
-                        params: {
-                            path: op.path,
-                            input: op.input,
-                        },
-                    }));
-                } else {
-                    setTimeout(send, 10);
+                try {
+                    const socket = await connect();
+                    if (socket.readyState === 1) {
+                        socket.send(JSON.stringify({
+                            id: op.id,
+                            method: op.type,
+                            params: {
+                                path: op.path,
+                                input: op.input,
+                            },
+                        }));
+                    } else {
+                        setTimeout(send, 10);
+                    }
+                } catch (err) {
+                    reject(err);
+                    pendingRequests.delete(op.id);
                 }
             };
             send();

@@ -86,14 +86,14 @@ export interface CORSOptions {
  */
 export function createHTTPHandler(opts: {
     router: Router<any>;
-    createContext: (req: any, res: any) => Promise<any> | any;
+    createContext: (opts: { req: any; res: any }) => Promise<any> | any;
     cors?: CORSOptions | boolean;
 }) {
     return async (req: any, res: any) => {
         const { router, createContext, cors } = opts;
 
         // Handle CORS
-        if (cors) {
+        if (cors && req?.headers) {
             const corsOpts: CORSOptions = cors === true ? {} : cors;
             const requestOrigin = req.headers.origin || req.headers.referer;
 
@@ -145,10 +145,27 @@ export function createHTTPHandler(opts: {
         }
 
         // Extract path and batch status
-        const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+        if (!req) {
+            throw new Error('Request object is undefined');
+        }
+
+        // Debug logging
+        console.log('[HTTP Handler] Request URL:', req.url);
+        console.log('[HTTP Handler] Request headers:', req.headers);
+
+        const url = new URL(req.url ?? '/', `http://${req.headers?.host ?? 'localhost'}`);
         const path = url.pathname.startsWith('/trpc')
             ? url.pathname.slice(5).replace(/^\//, '')
             : url.pathname.replace(/^\//, '');
+
+        console.log('[HTTP Handler] Extracted path:', path);
+
+        if (path === '') {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/html');
+            res.end('<h1>tinyRPC Server</h1><p>Server is running. Use a tinyRPC client to interact with the API.</p>');
+            return;
+        }
 
         const isBatch = url.searchParams.get('batch') === 'true';
 
@@ -179,7 +196,7 @@ export function createHTTPHandler(opts: {
         }
 
         try {
-            const ctx = await createContext(req, res);
+            const ctx = await createContext({ req, res });
             const { body, status, headers } = await resolveHTTPResponse({
                 router,
                 path,

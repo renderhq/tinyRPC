@@ -65,6 +65,9 @@ async function main() {
         onData: (msg) => {
             console.log(`\x1b[90m[live]\x1b[0m ${msg.author}: ${msg.text} (${msg.timestamp.toLocaleTimeString()})`);
         },
+        onError: (err) => {
+            console.error(`\x1b[31m[Subscription Error]\x1b[0m`, err);
+        },
     });
 
     await new Promise(r => setTimeout(r, 500));
@@ -103,12 +106,12 @@ async function main() {
     // 6. SWR Cache & Tracing Demo
     console.log('\n[SWR Demo] First call to slowQuery (expected ~500ms)...');
     const start1 = Date.now();
-    await bob.slowQuery.query();
+    await bob.slowQuery.query({});
     console.log(`[SWR Demo] Done in ${Date.now() - start1}ms`);
 
     console.log('\n[SWR Demo] Second call to slowQuery (expected < 5ms - Cached!)');
     const start2 = Date.now();
-    await bob.slowQuery.query();
+    await bob.slowQuery.query({});
     console.log(`[SWR Demo] Done in ${Date.now() - start2}ms`);
 
     console.log('\n\x1b[32mDemo finished successfully.\x1b[0m');
