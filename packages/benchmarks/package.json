@@ -8,7 +8,7 @@
   "dependencies": {
     "@tinyrpc/client": "workspace:*",
     "@tinyrpc/server": "workspace:*",
-    "zod": "^3.25.76",
+    "zod": "^3.23.8",
     "ws": "^8.18.3"
   }
 }

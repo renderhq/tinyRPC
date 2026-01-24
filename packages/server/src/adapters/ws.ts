@@ -67,6 +67,12 @@ export function createWSHandler(opts: {
                 let current: any = router;
 
                 for (const segment of pathArray) {
+                    if (!current || typeof current !== 'object') {
+                        throw new TRPCError({
+                            code: 'NOT_FOUND',
+                            message: `Invalid path segment: ${segment}`,
+                        });
+                    }
                     current = current[segment] ?? current._def?.procedures?.[segment];
                 }
 
