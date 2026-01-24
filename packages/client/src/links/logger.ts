@@ -17,7 +17,6 @@ export function loggerLink(): TRPCLink {
           const success = !res.result.error;
 
           const status = success ? 'SUCCESS' : 'FAILURE';
-          const color = success ? '#2ecc71' : '#e74c3c';
 
           console.groupCollapsed(
             `[tinyRPC] ${status}: ${op.type} ${op.path} (${durationMs.toFixed(2)}ms)`
@@ -41,6 +40,29 @@ export function loggerLink(): TRPCLink {
         }
         return res;
       });
+    }
+
+    if (result && typeof result.subscribe === 'function') {
+      console.log(`[tinyRPC] SUB: subscription ${op.path} initiated`);
+      return result.pipe((observable: any) => ({
+        subscribe: (observer: any) => {
+          console.log(`[tinyRPC] SUB: subscription ${op.path} active`);
+          return observable.subscribe({
+            next: (data: any) => {
+              console.log(`[tinyRPC] DATA: subscription ${op.path} event`, data);
+              observer.next(data);
+            },
+            error: (err: any) => {
+              console.error(`[tinyRPC] ERR: subscription ${op.path} error`, err);
+              observer.error(err);
+            },
+            complete: () => {
+              console.log(`[tinyRPC] END: subscription ${op.path} complete`);
+              observer.complete();
+            },
+          });
+        },
+      }));
     }
 
     return result;

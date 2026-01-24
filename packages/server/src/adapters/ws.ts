@@ -112,6 +112,7 @@ export function createWSHandler(opts: {
                             );
                         },
                         error: (err: any) => {
+                            subscriptions.delete(id);
                             const trpcError =
                                 err instanceof TRPCError
                                     ? err
@@ -131,6 +132,7 @@ export function createWSHandler(opts: {
                             );
                         },
                         complete: () => {
+                            subscriptions.delete(id);
                             ws.send(
                                 JSON.stringify({
                                     id,

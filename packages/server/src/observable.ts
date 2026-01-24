@@ -21,29 +21,59 @@ export interface Unsubscribable {
  * @public
  */
 export class Observable<T> {
-  constructor(private _subscribe: (observer: Observer<T>) => Unsubscribable | (() => void)) {}
+  constructor(private _subscribe: (observer: Observer<T>) => Unsubscribable | (() => void)) { }
 
   /**
    * Subscribe to the observable stream.
    */
   subscribe(observer: Partial<Observer<T>>): Unsubscribable {
+    let closed = false;
+
     const fullObserver: Observer<T> = {
-      next: (v) => observer.next?.(v),
-      error: (e) => observer.error?.(e),
-      complete: () => observer.complete?.(),
+      next: (v) => {
+        if (!closed) observer.next?.(v);
+      },
+      error: (e) => {
+        if (!closed) {
+          closed = true;
+          observer.error?.(e);
+          cleanup();
+        }
+      },
+      complete: () => {
+        if (!closed) {
+          closed = true;
+          observer.complete?.();
+          cleanup();
+        }
+      },
     };
 
     const teardown = this._subscribe(fullObserver);
 
+    const cleanup = () => {
+      if (typeof teardown === 'function') {
+        teardown();
+      } else if (teardown && 'unsubscribe' in teardown) {
+        teardown.unsubscribe();
+      }
+    };
+
+    // Store cleanup for internal use if needed, but for now we just return the handle
+    (fullObserver as any).cleanup = cleanup;
+
     return {
       unsubscribe: () => {
-        if (typeof teardown === 'function') {
-          teardown();
-        } else if (teardown && 'unsubscribe' in teardown) {
-          teardown.unsubscribe();
+        if (!closed) {
+          closed = true;
+          cleanup();
         }
       },
     };
+  }
+
+  private cleanup() {
+    // This is a placeholder for more advanced lifecycle management if needed
   }
 
   /**

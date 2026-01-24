@@ -11,6 +11,7 @@ export { retryLink } from './links/retry';
 export { loggerLink } from './links/logger';
 export { cacheLink } from './links/cache';
 export { splitLink } from './links/split';
+export { timeoutLink } from './links/timeout';
 export { TRPCClientError } from './TRPCClientError';
 export * from './types';
 

@@ -5,8 +5,6 @@ import type { TRPCProxyClient } from './types';
 import { map } from './observable';
 import { TRPCClientError } from './TRPCClientError';
 
-let idCounter = 0;
-
 /**
  * @internal
  */
@@ -14,6 +12,7 @@ export function createTRPCProxyClient<TRouter extends AnyRouter>(opts: {
     links: TRPCLink[];
     transformer?: any;
 }): TRPCProxyClient<TRouter> {
+    let idCounter = 0;
     const { links, transformer: transformerOpts } = opts;
 
     const transformer = transformerOpts
