@@ -60,7 +60,9 @@ export function wsLink(opts: WSLinkOptions): TRPCLink {
         const pending = pendingRequests.get(id);
         if (pending) {
           if (error) {
-            pending.reject({ error });
+            pending.resolve({
+              result: { error },
+            });
           } else {
             pending.resolve({
               result: {
