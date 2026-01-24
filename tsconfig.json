@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
@@ -22,15 +23,21 @@
       ],
       "@tinyrpc/client": [
         "./packages/client/src/index.ts"
+      ],
+      "@tinyrpc/react": [
+        "./packages/react/src/index.ts"
       ]
     },
     "lib": [
-      "esnext"
+      "esnext",
+      "dom"
     ]
   },
   "include": [
     "packages",
-    "example"
+    "example",
+    "examples",
+    "tests"
   ],
   "exclude": [
     "node_modules",

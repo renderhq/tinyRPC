@@ -4,13 +4,36 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "dev:server": "tsx example/src/server.ts",
-    "dev:client": "tsx example/src/client.ts"
+    "dev:basic": "tsx examples/basic-http/server.ts",
+    "dev:basic-client": "tsx examples/basic-http/client.ts",
+    "dev:ws": "tsx examples/full-stack-ws/server.ts",
+    "dev:ws-client": "tsx examples/full-stack-ws/client.ts",
+    "dev:validation": "tsx examples/validation-demo/validation-test.ts",
+    "dev:analytics": "tsx examples/analytics-dashboard/server.ts",
+    "dev:analytics-client": "tsx examples/analytics-dashboard/client.ts",
+    "test:all": "tsx tests/run-all-tests.ts",
+    "test:benchmark": "tsx tests/comprehensive-benchmark.ts",
+    "lint": "prettier --check .",
+    "format": "prettier --write .",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@tinyrpc/client": "workspace:*",
+    "@tinyrpc/server": "workspace:*",
     "@types/node": "^22.10.2",
+    "@types/ws": "^8.18.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "ws": "^8.18.3",
+    "zod": "^3.23.8"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,json,md}": [
+      "prettier --write"
+    ]
   }
 }

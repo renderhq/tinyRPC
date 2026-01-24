@@ -1,53 +1,63 @@
-import { TRPCError } from '../errors.js';
-import type { ProcedureParams, MiddlewareFunction } from '../types.js';
+import { TRPCError } from '../errors';
+import type { ProcedureParams, MiddlewareFunction } from '../types';
 
 /**
- * Audit log middleware
+ * A middleware that logs procedure execution timing and status to the server console.
+ * @public
  */
-export function auditLogMiddleware<TParams extends ProcedureParams>(): MiddlewareFunction<TParams, TParams> {
-    return async (opts) => {
-        const { path, type } = opts;
-        const start = Date.now();
-        const result = await opts.next();
-        const duration = Date.now() - start;
+export function auditLogMiddleware<TParams extends ProcedureParams>(): MiddlewareFunction<
+  TParams,
+  TParams
+> {
+  return async (opts) => {
+    const { path, type } = opts;
+    const start = performance.now();
+    const result = await opts.next();
+    const duration = performance.now() - start;
 
-        console.log(`[AuditLog] ${type} ${path} - duration: ${duration}ms, ok: ${result.ok}`);
+    const status = result.ok ? 'OK' : 'ERROR';
+    console.log(`[tinyRPC] ${status} ${type} ${path} (${duration.toFixed(2)}ms)`);
 
-        return result;
-    };
+    return result;
+  };
 }
 
 /**
- * Basic in-memory rate limiting middleware
+ * Basic in-memory rate limiting middleware.
+ * Identifies clients by context request metadata or authenticated user ID.
+ * @public
  */
 export function rateLimitMiddleware<TParams extends ProcedureParams>(opts: {
-    limit: number;
-    windowMs: number;
+  /** Maximum number of requests allowed in the window */
+  limit: number;
+  /** The rate limiting window in milliseconds */
+  windowMs: number;
 }): MiddlewareFunction<TParams, TParams> {
-    const hits = new Map<string, { count: number; reset: number }>();
+  const hits = new Map<string, { count: number; reset: number }>();
 
-    return async (innerOpts) => {
-        const { ctx, next } = innerOpts;
-        const identifier = (ctx as any).req?.socket?.remoteAddress || (ctx as any).user?.id || 'anonymous';
+  return async (innerOpts) => {
+    const { ctx, next } = innerOpts;
+    const identifier =
+      (ctx as any).req?.socket?.remoteAddress || (ctx as any).user?.id || 'anonymous';
 
-        const now = Date.now();
-        const state = hits.get(identifier) || { count: 0, reset: now + opts.windowMs };
+    const now = Date.now();
+    const state = hits.get(identifier) || { count: 0, reset: now + opts.windowMs };
 
-        if (now > state.reset) {
-            state.count = 0;
-            state.reset = now + opts.windowMs;
-        }
+    if (now > state.reset) {
+      state.count = 0;
+      state.reset = now + opts.windowMs;
+    }
 
-        state.count++;
-        hits.set(identifier, state);
+    state.count++;
+    hits.set(identifier, state);
 
-        if (state.count > opts.limit) {
-            throw new TRPCError({
-                code: 'TOO_MANY_REQUESTS',
-                message: `Rate limit exceeded. Try again in ${Math.round((state.reset - now) / 1000)}s`,
-            });
-        }
+    if (state.count > opts.limit) {
+      throw new TRPCError({
+        code: 'TOO_MANY_REQUESTS',
+        message: `Rate limit exceeded. Retry in ${Math.ceil((state.reset - now) / 1000)}s`,
+      });
+    }
 
-        return next();
-    };
+    return next();
+  };
 }

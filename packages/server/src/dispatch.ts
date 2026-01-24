@@ -1,8 +1,8 @@
-import { TRPCError } from './errors.js';
-import { callProcedure } from './middleware.js';
-import type { Router, AnyProcedure, TRPCResponse } from './types.js';
-import { transformTRPCResponse, getHTTPStatusCode } from './errorUtils.js';
-import { getTransformer } from './transformer.js';
+import { TRPCError } from './errors';
+import { callProcedure } from './middleware';
+import type { Router, AnyProcedure, TRPCResponse } from './types';
+import { transformTRPCResponse, getHTTPStatusCode } from './errorUtils';
+import { getTransformer } from './transformer';
 
 /**
  * @internal
@@ -13,7 +13,11 @@ export async function resolveHTTPResponse(opts: {
     ctx: any;
     input: any;
     isBatch: boolean;
-}): Promise<{ body: TRPCResponse | TRPCResponse[]; status: number; headers?: Record<string, string> }> {
+}): Promise<{
+    body: TRPCResponse | TRPCResponse[];
+    status: number;
+    headers?: Record<string, string>;
+}> {
     const { router, path, ctx, input, isBatch } = opts;
     const transformer = getTransformer(router._def.config?.transformer);
 
@@ -61,13 +65,15 @@ export async function resolveHTTPResponse(opts: {
     const result = isBatch ? results : (results[0] as TRPCResponse);
     return {
         body: result,
-        status: isBatch ? 200 : ('error' in result ? result.error.data?.httpStatus ?? 500 : 200),
-        headers: allMetrics.length > 0 ? {
-            'X-TinyRPC-Trace': JSON.stringify(isBatch ? allMetrics : allMetrics[0])
-        } : undefined as any
+        status: isBatch ? 200 : 'error' in result ? (result.error.data?.httpStatus ?? 500) : 200,
+        headers:
+            allMetrics.length > 0
+                ? {
+                    'X-TinyRPC-Trace': JSON.stringify(isBatch ? allMetrics : allMetrics[0]),
+                }
+                : (undefined as any),
     };
 }
-
 
 /**
  * @public
@@ -86,7 +92,13 @@ export interface CORSOptions {
  */
 export function createHTTPHandler(opts: {
     router: Router<any>;
-    createContext: (opts: { req: any; res: any }) => Promise<any> | any;
+    /**
+     * Optional function to create a context object for each request.
+     */
+    createContext?: (opts: { req: any; res: any }) => Promise<any> | any;
+    /**
+     * Optional CORS configuration.
+     */
     cors?: CORSOptions | boolean;
 }) {
     return async (req: any, res: any) => {
@@ -149,21 +161,17 @@ export function createHTTPHandler(opts: {
             throw new Error('Request object is undefined');
         }
 
-        // Debug logging
-        console.log('[HTTP Handler] Request URL:', req.url);
-        console.log('[HTTP Handler] Request headers:', req.headers);
-
         const url = new URL(req.url ?? '/', `http://${req.headers?.host ?? 'localhost'}`);
         const path = url.pathname.startsWith('/trpc')
             ? url.pathname.slice(5).replace(/^\//, '')
             : url.pathname.replace(/^\//, '');
 
-        console.log('[HTTP Handler] Extracted path:', path);
-
         if (path === '') {
             res.statusCode = 200;
             res.setHeader('Content-Type', 'text/html');
-            res.end('<h1>tinyRPC Server</h1><p>Server is running. Use a tinyRPC client to interact with the API.</p>');
+            res.end(
+                '<h1>tinyRPC Server</h1><p>Server is running. Use a tinyRPC client to interact with the API.</p>'
+            );
             return;
         }
 
@@ -196,7 +204,7 @@ export function createHTTPHandler(opts: {
         }
 
         try {
-            const ctx = await createContext({ req, res });
+            const ctx = createContext ? await createContext({ req, res }) : {};
             const { body, status, headers } = await resolveHTTPResponse({
                 router,
                 path,
@@ -214,10 +222,13 @@ export function createHTTPHandler(opts: {
             }
             res.end(JSON.stringify(body));
         } catch (err: any) {
-            const trpcError = err instanceof TRPCError ? err : new TRPCError({
-                code: 'INTERNAL_SERVER_ERROR',
-                message: err.message,
-            });
+            const trpcError =
+                err instanceof TRPCError
+                    ? err
+                    : new TRPCError({
+                        code: 'INTERNAL_SERVER_ERROR',
+                        message: err.message,
+                    });
             const body = transformTRPCResponse(trpcError, path);
             res.statusCode = getHTTPStatusCode(trpcError.code);
             res.setHeader('Content-Type', 'application/json');
@@ -229,12 +240,7 @@ export function createHTTPHandler(opts: {
 /**
  * @internal
  */
-async function dispatch(opts: {
-    router: Router<any>;
-    path: string;
-    ctx: any;
-    input: any;
-}) {
+async function dispatch(opts: { router: Router<any>; path: string; ctx: any; input: any }) {
     const { router, path, ctx, input } = opts;
     const pathArray = path.split('.');
 
@@ -243,7 +249,7 @@ async function dispatch(opts: {
         if (!current || typeof current !== 'object') {
             throw new TRPCError({
                 code: 'NOT_FOUND',
-                message: `Invalid path segment: ${segment}`
+                message: `Invalid path segment: ${segment}`,
             });
         }
         current = current[segment] ?? current._def?.procedures?.[segment];
@@ -252,7 +258,7 @@ async function dispatch(opts: {
     if (!current?._def?.procedure) {
         throw new TRPCError({
             code: 'NOT_FOUND',
-            message: `Procedure not found: ${path}`
+            message: `Procedure not found: ${path}`,
         });
     }
 
