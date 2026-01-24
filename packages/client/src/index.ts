@@ -1,19 +1,23 @@
 import type { AnyRouter } from '@tinyrpc/server';
-import { createTRPCProxyClient } from './proxy.js';
+import { createTRPCProxyClient } from './proxy';
 
-export * from './proxy.js';
-export * from './links.js';
-export * from './observable.js';
-export { wsLink } from './links/ws.js';
-export { dedupeLink } from './links/dedupe.js';
-export * from './types.js';
+export * from './proxy';
+export * from './links';
+export * from './observable';
+export { wsLink } from './links/ws';
+export { httpBatchLink, httpLink } from './links';
+export { dedupeLink } from './links/dedupe';
+export { retryLink } from './links/retry';
+export { loggerLink } from './links/logger';
+export { cacheLink } from './links/cache';
+export { splitLink } from './links/split';
+export { TRPCClientError } from './TRPCClientError';
+export * from './types';
 
 /**
  * @public
  */
-export const createTRPCClient = <TRouter extends AnyRouter>(opts: {
-    links: any[];
-}) => {
+export const createTRPCClient = <TRouter extends AnyRouter>(opts: { links: any[] }) => {
     return createTRPCProxyClient<TRouter>(opts);
 };
 

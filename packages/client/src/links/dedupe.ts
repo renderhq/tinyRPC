@@ -1,36 +1,37 @@
-import type { TRPCLink } from '../links.js';
+import type { TRPCLink } from '../links';
 
 /**
  * Deduplicates concurrent identical query requests.
- * Only 'query' operations are deduplicated.
+ * Ensures that if multiple identical queries are inflight, only one network request is made.
+ * @public
  */
 export function dedupeLink(): TRPCLink {
-    const inflight = new Map<string, Promise<any>>();
+  const inflight = new Map<string, Promise<any>>();
 
-    return (opts) => {
-        const { op, next } = opts;
+  return (opts) => {
+    const { op, next } = opts;
 
-        if (op.type !== 'query') {
-            return next(op);
-        }
+    // Deduplication is only safe for side-effect-free query operations
+    if (op.type !== 'query') {
+      return next(op);
+    }
 
-        const key = JSON.stringify({ path: op.path, input: op.input });
+    const key = JSON.stringify({ path: op.path, input: op.input });
 
-        const active = inflight.get(key);
-        if (active) {
-            return active;
-        }
+    const active = inflight.get(key);
+    if (active) {
+      return active;
+    }
 
-        const result = next(op);
+    const result = next(op);
 
-        // We only deduplicate Promises (queries/mutations)
-        if (result instanceof Promise) {
-            inflight.set(key, result);
-            return result.finally(() => {
-                inflight.delete(key);
-            });
-        }
+    if (result instanceof Promise) {
+      inflight.set(key, result);
+      return result.finally(() => {
+        inflight.delete(key);
+      });
+    }
 
-        return result;
-    };
+    return result;
+  };
 }
