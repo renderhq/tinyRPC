@@ -135,6 +135,13 @@ export function wsLink(opts: WSLinkOptions): TRPCLink {
     return new Promise((resolve, reject) => {
       pendingRequests.set(op.id, { resolve, reject, op });
 
+      if (op.signal) {
+        op.signal.addEventListener('abort', () => {
+          pendingRequests.delete(op.id);
+          reject(new Error('Operation aborted'));
+        });
+      }
+
       const send = async () => {
         try {
           const socket = await connect();

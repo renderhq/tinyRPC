@@ -13,6 +13,7 @@ import {
   cacheLink,
   dedupeLink,
   splitLink,
+  timeoutLink,
 } from '@tinyrpc/client';
 import { z } from 'zod';
 import http from 'node:http';
@@ -458,6 +459,49 @@ async function runLinksTests() {
       // Should have logged
       if (!logged) {
         console.log('[INFO] Logger might not have been detected');
+      }
+    } finally {
+      server.close();
+    }
+  });
+
+  // Test 10: Timeout Link (automatic abort)
+  await testResults.run('Links - Timeout Link', async () => {
+    const t = initTRPC.create();
+    const router = t.router({
+      slow: t.procedure.query(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return 'too late';
+      }),
+      fast: t.procedure.query(() => 'just in time'),
+    });
+
+    const { server, port } = await createTestServer(3040);
+    const handler = createHTTPHandler({ router });
+    server.on('request', (req, res) => handler(req, res));
+
+    const client = createTRPCProxyClient<typeof router>({
+      links: [
+        timeoutLink({ timeout: 200 }),
+        httpLink({ url: `http://localhost:${port}` }),
+      ],
+    });
+
+    try {
+      // Test 1: Should fail due to timeout
+      try {
+        await client.slow.query();
+        throw new Error('Should have timed out');
+      } catch (err: any) {
+        if (!err.message.includes('timed out')) {
+          throw new Error(`Expected timeout error, got: ${err.message}`);
+        }
+      }
+
+      // Test 2: Should succeed within timeout
+      const result = await client.fast.query();
+      if (result !== 'just in time') {
+        throw new Error(`Expected Success, got ${result}`);
       }
     } finally {
       server.close();
