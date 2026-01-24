@@ -2,16 +2,16 @@
  * @internal
  */
 export interface DataTransformer {
-    serialize(obj: any): any;
-    deserialize(obj: any): any;
+  serialize(obj: any): any;
+  deserialize(obj: any): any;
 }
 
 /**
  * @internal
  */
 export interface CombinedDataTransformer {
-    input: DataTransformer;
-    output: DataTransformer;
+  input: DataTransformer;
+  output: DataTransformer;
 }
 
 /**
@@ -23,25 +23,25 @@ export type DataTransformerOptions = DataTransformer | CombinedDataTransformer;
  * Default transformer that does nothing.
  */
 export const defaultTransformer: DataTransformer = {
-    serialize: (obj) => obj,
-    deserialize: (obj) => obj,
+  serialize: (obj) => obj,
+  deserialize: (obj) => obj,
 };
 
 /**
  * @internal
  */
 export function getTransformer(transformer?: DataTransformerOptions): CombinedDataTransformer {
-    if (!transformer) {
-        return {
-            input: defaultTransformer,
-            output: defaultTransformer,
-        };
-    }
-    if ('input' in transformer && 'output' in transformer) {
-        return transformer;
-    }
+  if (!transformer) {
     return {
-        input: transformer,
-        output: transformer,
+      input: defaultTransformer,
+      output: defaultTransformer,
     };
+  }
+  if ('input' in transformer && 'output' in transformer) {
+    return transformer;
+  }
+  return {
+    input: transformer,
+    output: transformer,
+  };
 }

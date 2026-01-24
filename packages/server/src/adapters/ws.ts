@@ -1,11 +1,11 @@
 import { WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
-import type { Router } from '../types.js';
-import { TRPCError } from '../errors.js';
-import { callProcedure } from '../middleware.js';
-import { transformTRPCResponse } from '../errorUtils.js';
-import type { Unsubscribable } from '../observable.js';
-import { getTransformer } from '../transformer.js';
+import type { Router } from '../types';
+import { TRPCError } from '../errors';
+import { callProcedure } from '../middleware';
+import { transformTRPCResponse } from '../errorUtils';
+import type { Unsubscribable } from '../observable';
+import { getTransformer } from '../transformer';
 
 interface WSMessage {
     id: string | number;
@@ -16,18 +16,40 @@ interface WSMessage {
     };
 }
 
+/**
+ * Creates a raw WebSocket handler for tinyRPC procedures.
+ * Supports bidirectional communication for queries, mutations, and subscriptions.
+ * @internal
+ */
 export function createWSHandler(opts: {
     router: Router<any>;
-    createContext: (opts: { req: IncomingMessage; ws: WebSocket }) => Promise<any>;
+    /**
+     * Optional function to create a context object for each WebSocket connection.
+     */
+    createContext?: (opts: { req: IncomingMessage; ws: WebSocket }) => Promise<any> | any;
 }) {
-    const { router, createContext } = opts;
+    const { router, createContext = () => ({}) } = opts;
     const transformer = getTransformer(router._def.config?.transformer);
 
     return (ws: WebSocket, req: IncomingMessage) => {
         const subscriptions = new Map<string | number, Unsubscribable>();
 
         ws.on('message', async (data) => {
-            const msg: WSMessage = JSON.parse(data.toString());
+            let msg: WSMessage;
+            try {
+                msg = JSON.parse(data.toString());
+            } catch (err) {
+                ws.send(
+                    JSON.stringify({
+                        id: null,
+                        error: {
+                            message: 'Parse Error: Invalid JSON',
+                            code: -32700,
+                        },
+                    })
+                );
+                return;
+            }
             const { id, method, params } = msg;
 
             if (method === 'subscription.stop') {
@@ -56,7 +78,6 @@ export function createWSHandler(opts: {
                 }
 
                 const procedure = current;
-                // Deserialize input
                 const procedureInput = transformer.input.deserialize(params.input);
 
                 if (method === 'subscription') {
@@ -68,43 +89,56 @@ export function createWSHandler(opts: {
                         type: 'subscription',
                     });
 
-                    const sub = observable.subscribe({
+                    if (!observable.ok) {
+                        throw observable.error;
+                    }
+
+                    const sub = observable.data.subscribe({
                         next: (data: any) => {
-                            ws.send(JSON.stringify({
-                                id,
-                                result: {
-                                    type: 'data',
-                                    data: transformer.output.serialize(data),
-                                },
-                            }));
+                            ws.send(
+                                JSON.stringify({
+                                    id,
+                                    result: {
+                                        type: 'data',
+                                        data: transformer.output.serialize(data),
+                                    },
+                                })
+                            );
                         },
                         error: (err: any) => {
-                            const trpcError = err instanceof TRPCError ? err : new TRPCError({
-                                code: 'INTERNAL_SERVER_ERROR',
-                                message: err.message,
-                            });
+                            const trpcError =
+                                err instanceof TRPCError
+                                    ? err
+                                    : new TRPCError({
+                                        code: 'INTERNAL_SERVER_ERROR',
+                                        message: err.message,
+                                    });
                             const response = transformTRPCResponse(trpcError, params.path);
                             if (response.error.data) {
                                 response.error.data = transformer.output.serialize(response.error.data);
                             }
-                            ws.send(JSON.stringify({
-                                id,
-                                error: response.error,
-                            }));
+                            ws.send(
+                                JSON.stringify({
+                                    id,
+                                    error: response.error,
+                                })
+                            );
                         },
                         complete: () => {
-                            ws.send(JSON.stringify({
-                                id,
-                                result: {
-                                    type: 'stopped',
-                                },
-                            }));
+                            ws.send(
+                                JSON.stringify({
+                                    id,
+                                    result: {
+                                        type: 'stopped',
+                                    },
+                                })
+                            );
                         },
                     });
 
                     subscriptions.set(id, sub);
                 } else {
-                    const data = await callProcedure({
+                    const result = await callProcedure({
                         procedure,
                         ctx,
                         input: procedureInput,
@@ -112,27 +146,38 @@ export function createWSHandler(opts: {
                         type: method as any,
                     });
 
-                    ws.send(JSON.stringify({
-                        id,
-                        result: {
-                            type: 'data',
-                            data: transformer.output.serialize(data),
-                        },
-                    }));
+                    if (!result.ok) {
+                        throw result.error;
+                    }
+
+                    ws.send(
+                        JSON.stringify({
+                            id,
+                            result: {
+                                type: 'data',
+                                data: transformer.output.serialize(result.data),
+                            },
+                        })
+                    );
                 }
             } catch (err: any) {
-                const trpcError = err instanceof TRPCError ? err : new TRPCError({
-                    code: 'INTERNAL_SERVER_ERROR',
-                    message: err.message,
-                });
+                const trpcError =
+                    err instanceof TRPCError
+                        ? err
+                        : new TRPCError({
+                            code: 'INTERNAL_SERVER_ERROR',
+                            message: err.message,
+                        });
                 const response = transformTRPCResponse(trpcError, params.path);
                 if (response.error.data) {
                     response.error.data = transformer.output.serialize(response.error.data);
                 }
-                ws.send(JSON.stringify({
-                    id,
-                    error: response.error,
-                }));
+                ws.send(
+                    JSON.stringify({
+                        id,
+                        error: response.error,
+                    })
+                );
             }
         });
 
@@ -147,13 +192,23 @@ export function createWSHandler(opts: {
 
 import type { WebSocketServer } from 'ws';
 
+/**
+ * Attaches a tinyRPC WebSocket handler to an existing WebSocketServer.
+ * @public
+ */
 export function applyWSHandler(opts: {
     wss: WebSocketServer;
     router: Router<any>;
-    createContext: (opts: { req: IncomingMessage; ws: WebSocket }) => Promise<any>;
+    /**
+     * Optional function to create a context object for each WebSocket connection.
+     */
+    createContext?: (opts: { req: IncomingMessage; ws: WebSocket }) => Promise<any> | any;
 }) {
     const { wss, router, createContext } = opts;
-    const handler = createWSHandler({ router, createContext });
+    const handler = createWSHandler({
+        router,
+        ...(createContext ? { createContext } : {}),
+    });
 
     wss.on('connection', (ws, req) => {
         handler(ws as any, req);
